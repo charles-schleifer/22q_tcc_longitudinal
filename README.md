@@ -10,6 +10,5 @@ Analysis of age-related trajectories for functional network connectivity in 22qD
 * to read fMRI results from the hoffman2 server, the script expects that the server `hoffman2.idre.ucla.edu:/u/project/cbearden/data` is mounted to your local machine at the path `~/Desktop/hoffman_mount` using an application such as SSHFS (mac download: https://osxfuse.github.io/)
   * requires first-level MRI results to be already computed on server (see https://github.com/cschleifer/22q_hoffman)
 
-## Analysis Steps
 
  

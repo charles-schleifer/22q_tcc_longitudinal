@@ -1,0 +1,1092 @@
+---
+title: "22q_longitudinal_gamm"
+author: "charlie schleifer"
+date: "5/10/2022"
+output: html_document
+---
+## Overview
+This script uses Generalized Additive Mixed Models (GAMMs) to model non-parametric age trajectories for thalamocortical functional network connectivity in 22qDel patients and typical controls. A random effects implementation of the ComBat algorithm (longCombat) is used to harmonize data from multiple sites.  
+
+## Set up workspace
+ciftiTools is an R package for analysis and plotting of CIFTI dscalar, dlabel, and dtseries files:
+https://htmlpreview.github.io/?https://github.com/mandymejia/ciftiTools/blob/master/vignettes/ciftiTools_vignette.html
+many ciftiTools functions require connectome workbench to be downloaded and installed locally:
+https://www.humanconnectome.org/software/get-connectome-workbench
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# clear workspace
+rm(list = ls(all.names = TRUE))
+
+# use SSHFS to mount hoffman2 server (download SSHFS for mac: https://osxfuse.github.io/)
+# TODO: set hoffman2 username
+uname <- "schleife"
+# set local path to mount server
+hoffman <- "~/Desktop/hoffman_mount"
+# create directory if needed 
+if(!file.exists(hoffman)){dir.create(hoffman)}
+# make string to run as system command
+mntcommand <- paste0("umount -f ", hoffman,"; sshfs ",uname,"@hoffman2.idre.ucla.edu:/u/project/cbearden/data ",hoffman)
+# if hoffman directory is empty, use system command and sshfs to mount server, if not empty assume already mounted and skip
+if(length(list.files(hoffman)) == 0){system(mntcommand)}else{print(paste(hoffman,"is not empty...skipping SSHFS step"))}
+
+# install longCombat for first time
+#install.packages("devtools")
+#install_github("jcbeer/longCombat")
+
+# lme4 from github
+#install_github("astamm/nloptr")
+#install_github("lme4/lme4")
+
+# list packages to load
+# ciftiTools dependency rgl may need XQuartz installed in order to visualize surfaces
+packages <- c("conflicted", "here", "magrittr", "mgcv", "gratia", "lme4", "lmerTest", "invgamma", "longCombat", "ciftiTools", "readxl", "dplyr", "data.table", "DescTools","tableone", "tibble", "reshape2", "viridis", "scico","RColorBrewer", "ggplot2", "gridExtra", "ggpubr","stringr")
+
+# install packages if not yet installed
+all_packages <- rownames(installed.packages())
+installed_packages <- packages %in% all_packages
+if (any(installed_packages == FALSE)){install.packages(packages[!installed_packages])}
+
+# load packages
+invisible(lapply(packages, library, character.only = TRUE))
+
+# use the filter function from dplyr, not stats
+conflict_prefer("filter", "dplyr")
+
+# get path to project repo directory
+project <- here()
+print(paste("Project directory:", project))
+
+# set up connectome workbench path for ciftiTools
+# https://www.humanconnectome.org/software/get-connectome-workbench
+# local wbpath (edit this path if workbench is installed in another location, e.g. on hoffman: /u/project/CCN/apps/hcp/current/workbench/bin_rh_linux64/)
+# TODO: edit if necessary
+wbpath <- "/Applications/workbench/bin_macosx64/"
+ciftiTools.setOption("wb_path", wbpath)
+
+# load rgl for ciftiTools visualization
+# may require XQartz v2.8.1 to be installed locally
+if(!require('rgl', quietly=TRUE)){install.packages('rgl')}
+rgl::setupKnitr()
+rgl::rgl.open(); rgl::rgl.close()
+```
+
+## load CAB-NP atlas
+RSN atlas of whole cortex and subcortex to use for thalamus striatum connectivity analysis. Atlas can be downloaded here: https://github.com/ColeLab/ColeAnticevicNetPartition
+load key for Ji parcels/networks
+```{r message=FALSE,include=FALSE,warning=FALSE}
+ji_key <- read.table(file.path(project,"CAB-NP/CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_parcels_LR_LabelKey.txt"),header=T)
+ji_net_keys <- ji_key[,c("NETWORKKEY","NETWORK")] %>% distinct %>% arrange(NETWORKKEY)
+print(ji_net_keys)
+
+# read cifti with subcortical structures labeled 
+xii_Ji_parcel <- read_cifti(file.path(project,"CAB-NP/CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_parcels_LR.dscalar.nii"), brainstructures = "all")
+xii_Ji_network <- read_cifti(file.path(project,"CAB-NP/CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_netassignments_LR.dscalar.nii"), brainstructures = "all")
+
+#view_xifti_volume(xii_Ji_parcel,colors="viridis",title="parcels",cex.title=1.3)
+#view_xifti_volume(xii_Ji_network,colors="Paired",title="networks",cex.title=1.3)
+```
+
+## Load individual GBC CIFTI
+computed by 22q_multisite_networkTC_save_individual.R and saved as a CSV with one value per network representing the z-transformed pearson correlation between signals in the thalamic and cortical subsets of that network
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# paths to sessions directories
+trio_dir <- file.path(hoffman,"22q/qunex_studyfolder/sessions")
+prisma_dir <- file.path(hoffman,"22qPrisma/qunex_studyfolder/sessions")
+
+# get list of sessions
+trio_sessions <- list.files(trio_dir,pattern="Q_[0-9]")
+prisma_sessions <- list.files(prisma_dir,pattern="Q_[0-9]")
+# exclude Q_0390_09302019 for now due to no AP BOLD; test excluding "Q_0321_03272017","Q_0334_12012016" to ensure restingAP* vs resting* prisma are the same
+#exclude_sessions <- c("Q_0390_09302019","Q_0321_03272017","Q_0334_12012016")
+#exclude_sessions <- c("Q_0390_09302019","Q_0477_01052022","Q_0484_01042022","Q_0508_06232022","Q_0519_05312022","Q_0520_06012022","Q_0521_05202022","Q_0525_06072022","Q_0526_06242022","Q_0527_07112022","Q_0528_07202022","Q_0529_07202022","Q_0541_07182022","Q_0549_10182022","Q_0561_11032022","Q_0568_10252022")
+
+# exclude only Q_0390_09302019 (missing AP BOLD)
+exclude_sessions <- "Q_0390_09302019"
+prisma_sessions <- prisma_sessions[! prisma_sessions %in% exclude_sessions]
+all_sessions <- c(trio_sessions,prisma_sessions)
+
+# file name to look for
+#gbc_name_trio <- "resting_fc_gbc_s_hpss_res-mVWMWB1d_gbc_mFz_0.dtseries.nii"
+#gbc_name_prisma <- "restingAP_fc_gbc_s_hpss_res-mVWMWB1d_gbc_mFz_0.dtseries.nii"
+
+# function to print name when reading cifti 
+read_cifti_verbose <- function(path, brainstructures){
+  print(path)
+  read_cifti(path, brainstructures = brainstructures)
+}
+
+# read ciftis trio and prisma and combine into one list
+trio_gbc <- lapply(trio_sessions, function(s) read_cifti_verbose(path=file.path(trio_dir,s,"images/functional",gbc_name_trio), brainstructures = "all")) 
+prisma_gbc <- lapply(prisma_sessions, function(s) read_cifti_verbose(path=file.path(prisma_dir,s,"images/functional",gbc_name_prisma), brainstructures = "all")) 
+all_gbc <- c(trio_gbc,prisma_gbc)
+names(all_gbc) <- all_sessions
+```
+
+
+## unwrap xifti data to vector that can be mapped back to xifti
+```{r}
+# function to output all values in xii as names vector organized by structure
+xii_to_vec <- function(xii){
+  # get vectors by brain structure
+  lh_vec <- as.vector(xii$data$cortex_left)
+  rh_vec <- as.vector(xii$data$cortex_right)
+  sc_vec <- as.vector(xii$data$subcort)
+  # name based on indices and brain structure
+  names(lh_vec) <- paste0("lh_",1:length(lh_vec))
+  names(rh_vec) <- paste0("rh_",1:length(rh_vec))
+  names(sc_vec) <- paste0("sc_",1:length(sc_vec))
+  # concatenate vectors
+  all_vec <- c(lh_vec,rh_vec,sc_vec)
+  return(all_vec)
+}
+
+# function to return a xii_to_vec formatted vector to xifti
+# vector must have the correct number of names indices beginning with lh*, rh* and sc*
+vec_to_xii <- function(vec, xii_template){
+  if(nrow(as.matrix(xii_template))==length(vec)){
+    # get matrices by brain structure
+    lh_mat <- as.matrix(vec[grep("lh.*", names(vec))])
+    rh_mat <- as.matrix(vec[grep("rh.*", names(vec))])
+    sc_mat <- as.matrix(vec[grep("sc.*", names(vec))])
+    # clear xii_template and replace with data from vector 
+    xii_template$data$cortex_left <- NULL
+    xii_template$data$cortex_left <-  lh_mat
+    xii_template$data$cortex_right <- NULL
+    xii_template$data$cortex_right <- rh_mat
+    xii_template$data$subcort <- NULL
+    xii_template$data$subcort <- sc_mat
+    return(xii_template)
+  }else{
+    stop("ERROR: vector length must equal template grayordinate count")
+  }
+}
+
+### test by transforming a xifti to vector and back to xifti
+#xii_test <- xii_test_nores
+#view_xifti_surface(xii_test, title="xii original", cex.title=1.3, colors="viridis")
+#view_xifti_volume(xii_test, title="xii original", cex.title=1.3, colors="viridis")
+#
+#vec_test <- xii_to_vec(xii_test)
+#xii_return <- vec_to_xii(vec_test, xii_template=xii_test)
+#view_xifti_surface(xii_return, title="xii remade from vec", cex.title=1.3, colors="viridis")
+#
+## try editing vector and returning to xii
+#vec_edit <- vec_test
+#vec_edit[grep("lh.*", names(vec_edit))] <- 0
+#vec_edit[grep("sc.*", names(vec_edit))] <- 0.05
+#xii_return_edit <- vec_to_xii(vec_edit, xii_template=xii_test)
+#view_xifti_surface(xii_return_edit, title="xii remade from edited vec", cex.title=1.3, colors="viridis")
+#view_xifti_volume(xii_return_edit, title="xii remade from edited vec", cex.title=1.3, colors="viridis")
+
+# convert each gbc map to a single vector
+all_gbc_veclist <- lapply(all_gbc, xii_to_vec)
+
+# create dataframe
+all_gbc_df <- all_gbc_veclist %>% do.call(rbind,.) %>% as.data.frame
+all_gbc_df$MRI_S_ID <- all_sessions
+```
+
+## load sistat data and get lists of scans to use
+all sistat tables should be exported as CSVs into a single directory
+the next several chunks deal with reading, cleaning and annotating the data exported from sistat, and then age matching
+the hcs sample is younger than del due to a large amount of very young hcs subjects. plan is to match samples by using followup timepoints rather than baseline for some younger participants, and dropping several older del subjects, and younger hcs subjects (prioritizing dropping subjects with worse motion stats when possible)
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# set location of directory with ucla sistat CSVs
+csvdir_ucla <- file.path(project,"demographics/ucla_sistat")
+
+# get list of files_ucla in directory
+files_ucla <- list.files(csvdir_ucla)
+fpaths <- lapply(files_ucla, function(file) paste(csvdir_ucla,file,sep="/"))
+
+# clean names
+fnames <- gsub(".csv","",files_ucla)
+fnames <- gsub("Re22Q_","",fnames)
+fnames <- gsub("Form_","",fnames)
+fnames <- gsub("Qry_","",fnames)
+
+# read all, set to na: "-9999", "-9998","." 
+input_all_ucla <- lapply(fpaths, read.csv, header=T, na.strings=c(".","-9999","-9998"), strip.white=T, sep=",")
+names(input_all_ucla) <- fnames
+df_all_ucla <- lapply(input_all_ucla, function(x) data.frame(x))
+
+# subset demo_mri for used scans
+ucla_demo <- df_all_ucla$demo_mri %>% filter(MRI_S_ID %in% all_sessions)
+
+# remove "FAMILY MEMBER" designation from subject identity
+ucla_demo$SUBJECT_IDENTITY <- ucla_demo$SUBJECT_IDENTITY %>% sub("FAMILY MEMBER","",.) %>% sub(",","",.) %>% trimws(which="both") %>% as.factor
+# change sex coding from 0/1 to F/M and set to factor
+ucla_demo$SEX <- factor(ucla_demo$SEX,levels=c(0,1),labels=c("F","M"))
+```
+
+# TEMPORARY
+read temporary csv with several subjects not yet in sistat
+```{r}
+# TODO: this chunk is temporary until sistat is updated 
+# TODO: note: q_0526 sex was "na" in original sheet, changed to M because combat can't have NAs
+# read new data
+temp_demo <- read_xlsx(file.path(project,"demographics/temporary/sMRI_demo_info_forCharlie.xlsx"), col_names=TRUE,na="",trim_ws = TRUE)
+
+# make empty demographics data frame to add new data to
+demo_add <- ucla_demo[1:nrow(temp_demo),]
+demo_add[,] <- NA
+demo_add$SUBJECTID <- temp_demo$`Subject ID`
+demo_add$SUBJECT_IDENTITY <- temp_demo$Diagnosis
+demo_add$MRI_S_ID <- temp_demo$`MRI ID`
+demo_add$SEX <- as.factor(temp_demo$Sex)
+demo_add$AGE <- temp_demo$Age
+demo_add$AGEMONTH <- temp_demo$Age*12
+demo_add$CONVERTEDVISITNUM <- 2
+
+# append to ucla demo
+ucla_demo <- rbind(ucla_demo,demo_add)
+```
+ 
+continue regular steps
+```{r}
+# manually fix missing sex for Q_0381_09102019
+# TODO: fix in sistat and re-export
+ucla_demo[which(ucla_demo$MRI_S_ID == "Q_0381_09102019"),"SEX"] <- "F"
+
+# set race=NA to 7 (unknown)
+ucla_demo$RACE[is.na(ucla_demo$RACE)] <- 7
+# set race as factor 1=American Indian/Alaska Native; 2=Asian; 3=Native Hawaiian/Pacific Islander; 4=Black or African American; 5=White; 6=Multiple; 7=Unknown
+ucla_demo$RACE <- factor(ucla_demo$RACE,levels=c(1:7),labels=c("1_Native_American","2_Asian","3_Pacific_Island","4_Black","5_White","6_Multiple","7_Unknown"))
+# ethnicity as factor with 0=N 1=Y
+ucla_demo$HISPANIC[is.na(ucla_demo$HISPANIC)] <- "Unknown"
+ucla_demo$HISPANIC <- factor(ucla_demo$HISPANIC,levels=c(0,1,"Unknown"),labels=c("N","Y","Unknown"))
+# get more accurate age with AGEMONTH/12
+ucla_demo$AGE <- as.numeric(ucla_demo$AGEMONTH)/12 
+
+# function to add column to code timepoints relative to sample used (i.e. if visit 1 and 1.12 missing, then 1.24 is baseline)
+# trio/prisma coded as T/P-visit_n where T-1 would be the subject's first trio scan and P-1 the first prisma, P-2 the second...
+# function should be applied to the indicies of rows (r) in a subset of demo_mri
+gettp <- function(r, df){
+  sub <- df$SUBJECTID[[r]]
+  visit <- df$CONVERTEDVISITNUM[[r]]
+  all_visits <- df$CONVERTEDVISITNUM[which(df$SUBJECTID == sub)] %>% sort
+  n_visits <- length(all_visits)
+  nt_visits <-length(which(all_visits < 2))
+  np_visits <- length(which(all_visits >= 2))
+  visit_index <- which(all_visits == visit)
+  if (visit < 2){
+    label=paste("T-",visit_index,sep="")
+  }else if (visit >= 2){
+    p_visits <- all_visits[which(all_visits >= 2)] %>% sort
+    p_visit_index <- which(p_visits == visit)
+    label=paste("P-",p_visit_index,sep="")
+  }
+  return(c(sub,visit,label,n_visits,nt_visits,np_visits,visit_index))
+}
+
+# get timepoints
+timepoints <- sapply(1:nrow(ucla_demo),function(r) gettp(r,ucla_demo)) %>% t %>% as.data.frame
+colnames(timepoints) <- c("SUBJECTID","CONVERTEDVISITNUM","converted_timepoint","n_timepoints","n_trio","n_prisma","visit_index")
+ucla_demo_tp <- cbind(ucla_demo,timepoints[,3:7])
+ucla_demo_tp$visit_index %<>% as.factor
+
+# subset to under max age limit (22 years old)
+ucla_demo_tp_agelim <- filter(ucla_demo_tp, ucla_demo_tp$AGE < 22)
+
+# subset to hcs del
+ucla_demo_hcs_del <- ucla_demo_tp_agelim %>% filter(SUBJECT_IDENTITY=="CONTROL" | SUBJECT_IDENTITY =="PATIENT-DEL")
+
+# remove unused factor levels
+ucla_demo_hcs_del %<>% droplevels
+```
+
+All timepoints, pre-matching demographics summary
+```{r}
+demo_summary <- CreateTableOne(data=ucla_demo_hcs_del,vars=c("AGE","SEX"),strata="SUBJECT_IDENTITY",addOverall=F)
+print(demo_summary, showAllLevels=T)
+```
+
+Baseline pre-matching summary
+```{r}
+demo_summary_bl <- CreateTableOne(data=filter(ucla_demo_hcs_del, ucla_demo_hcs_del$visit_index == 1),vars=c("AGE","SEX"),strata="SUBJECT_IDENTITY",addOverall=F)
+print(demo_summary_bl)
+```
+
+
+
+## get mean ciftis by group and age range
+```{r}
+all_gbc_del <- all_gbc[filter(ucla_demo_hcs_del, SUBJECT_IDENTITY=="PATIENT-DEL")$MRI_S_ID]
+all_gbc_hcs <- all_gbc[filter(ucla_demo_hcs_del, SUBJECT_IDENTITY=="CONTROL")$MRI_S_ID]
+
+all_gbc_del_6_14 <- all_gbc[filter(ucla_demo_hcs_del, SUBJECT_IDENTITY=="PATIENT-DEL" & AGE >6 & AGE < 14 )$MRI_S_ID]
+all_gbc_del_14_22 <- all_gbc[filter(ucla_demo_hcs_del, SUBJECT_IDENTITY=="PATIENT-DEL" & AGE >= 14 & AGE < 22 )$MRI_S_ID]
+
+all_gbc_hcs_6_14 <- all_gbc[filter(ucla_demo_hcs_del, SUBJECT_IDENTITY=="CONTROL" & AGE >6 & AGE < 14 )$MRI_S_ID]
+all_gbc_hcs_14_22 <- all_gbc[filter(ucla_demo_hcs_del, SUBJECT_IDENTITY=="CONTROL" & AGE >= 14 & AGE < 22 )$MRI_S_ID]
+
+
+# function to merge list of n xii into one xii with n cols
+merge_xifti_list <- function(list){
+  merged <- NULL
+  # loop through list, merging each xii with previous xiis
+  for(i in 1:length(list)) {   
+    xii <- list[[i]]
+    if(is.null(merged)){
+      print("...starting merged xii")
+      merged <- xii
+    }else{
+      print(paste("...merging xii",as.character(i),"of",as.character(length(list))))
+      merged <- merge_xifti(merged,xii)
+    }
+  }
+  return(merged)
+}
+
+pal_red_blue <- function(){
+  pal <- "RdBu"
+  ncolors <- 1000
+  mycolors <- rev(colorRampPalette(brewer.pal(11,pal))(ncolors))
+  return(mycolors)
+}
+
+xii_gbc_del <- merge_xifti_list(all_gbc_del)
+xii_gbc_hcs <- merge_xifti_list(all_gbc_hcs)
+xii_gbc_del_6_14 <- merge_xifti_list(all_gbc_del_6_14)
+xii_gbc_hcs_6_14 <- merge_xifti_list(all_gbc_hcs_6_14)
+xii_gbc_del_14_22 <- merge_xifti_list(all_gbc_del_14_22)
+xii_gbc_hcs_14_22 <- merge_xifti_list(all_gbc_hcs_14_22)
+
+xii_gbc_del_mean <- apply_xifti(xii_gbc_del, margin=1, mean)
+xii_gbc_hcs_mean <- apply_xifti(xii_gbc_hcs, margin=1, mean)
+xii_gbc_del_6_14_mean <- apply_xifti(xii_gbc_del_6_14, margin=1, mean)
+xii_gbc_hcs_6_14_mean <- apply_xifti(xii_gbc_hcs_6_14, margin=1, mean)
+xii_gbc_del_14_22_mean <- apply_xifti(xii_gbc_del_14_22, margin=1, mean)
+xii_gbc_hcs_14_22_mean <- apply_xifti(xii_gbc_hcs_14_22, margin=1, mean)
+
+xii_gbc_gdiff_all <- xii_gbc_del_mean - xii_gbc_hcs_mean
+xii_gbc_gdif_6_14 <- xii_gbc_del_6_14_mean - xii_gbc_hcs_6_14_mean
+xii_gbc_gdif_14_22 <- xii_gbc_del_14_22_mean - xii_gbc_hcs_14_22_mean
+
+view_xifti_surface(xii_gbc_del_mean, title="Global Signal Topography 22qDel mean", zlim=c(0,0.15), cex.title = 1.3)
+view_xifti_surface(xii_gbc_hcs_mean, title="Global Signal Topography HCS mean",zlim=c(0,0.15), cex.title = 1.3)
+
+view_xifti_surface(xii_gbc_gdiff_all, title="GBC Del-HCS group difference", zlim=c(-0.03,0.03),cex.title = 1.3, colors=pal_red_blue())
+view_xifti_volume(xii_gbc_gdiff_all, title="GBC Del-HCS group difference", zlim=c(-0.03,0.03),cex.title = 1.3, colors=pal_red_blue())
+
+view_xifti_surface(xii_gbc_gdif_6_14, title="GBC Del-HCS age 6-14 group difference",zlim=c(-0.03,0.03), cex.title = 1.3, colors=pal_red_blue())
+view_xifti_volume(xii_gbc_gdif_6_14, title="GBC Del-HCS age 6-14 group difference",zlim=c(-0.03,0.03), cex.title = 1.3, colors=pal_red_blue())
+
+view_xifti_surface(xii_gbc_gdif_14_22, title="GBC Del-HCS age 14-22 group difference",zlim=c(-0.03,0.03), cex.title = 1.3, colors=pal_red_blue())
+view_xifti_volume(xii_gbc_gdif_14_22, title="GBC Del-HCS age 14-22 group difference",zlim=c(-0.03,0.03), cex.title = 1.3, colors=pal_red_blue())
+
+```
+
+
+
+
+
+
+
+
+get motion data for all sessions by reading movement scrubbing files on hoffman
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+
+# function to get mapping between boldn and run name from session_hcp.txt
+get_boldn_names <- function(sesh,sessions_dir){
+  hcptxt <- read.table(file.path(sessions_dir,sesh,"session_hcp.txt"),sep=":",comment.char="#",fill=T,strip.white=T,col.names=c(1:4)) %>% as.data.frame()
+  hcpbolds <- hcptxt %>% filter(grepl("bold[0-9]",X2))
+  df_out <- cbind(rep(sesh,times=nrow(hcpbolds)),hcpbolds$X2,hcpbolds$X3)
+  colnames(df_out) <- c("sesh","bold_n","bold_name")
+  return(df_out)
+}
+
+# function to get %udvarsme from images/functional/movement/boldn.scrub
+get_percent_udvarsme <- function(sesh,sessions_dir,bold_name_use){
+  mov_dir <- file.path(sessions_dir,sesh,"images/functional/movement")
+  sesh_bolds <- get_boldn_names(sesh=sesh,sessions_dir=sessions_dir) %>% as.data.frame %>% filter(bold_name == bold_name_use)
+  if(nrow(sesh_bolds) > 0){
+    boldns_use <- sesh_bolds$bold_n %>% as.vector
+    for(i in 1:length(boldns_use)){
+      boldn <- boldns_use[i] %>% as.character
+      boldn_path <- file.path(mov_dir,paste(boldn,".scrub",sep=""))
+      mov_scrub <- read.table(boldn_path, header=T)
+      percent_udvarsme <- (sum(mov_scrub$udvarsme == 1)/length(mov_scrub$udvarsme)*100) %>% as.numeric %>% signif(3)
+      percent_use <- (sum(mov_scrub$udvarsme == 0)/length(mov_scrub$udvarsme)*100) %>% as.numeric %>% signif(3)
+      df_out <- cbind(sesh,boldn,bold_name_use,percent_udvarsme,percent_use)
+      colnames(df_out) <- c("sesh","bold_n","bold_name","percent_udvarsme","percent_use")
+      return(df_out)
+    }
+  }
+}
+
+# get trio movement
+percent_udvarsme_trio <- lapply(trio_sessions,function(s) get_percent_udvarsme(sesh=s,sessions_dir=trio_dir,bold_name_use="resting")) %>% do.call(rbind,.) %>% as.data.frame
+percent_udvarsme_trio$percent_udvarsme <- as.numeric(percent_udvarsme_trio$percent_udvarsme)
+percent_udvarsme_trio$percent_use <- as.numeric(percent_udvarsme_trio$percent_use)
+
+# get prisma movement
+percent_udvarsme_prisma <- lapply(prisma_sessions,function(s) get_percent_udvarsme(sesh=s,sessions_dir=prisma_dir,bold_name_use="restingAP")) %>% do.call(rbind,.) %>% as.data.frame
+percent_udvarsme_prisma$percent_udvarsme <- as.numeric(percent_udvarsme_prisma$percent_udvarsme)
+percent_udvarsme_prisma$percent_use <- as.numeric(percent_udvarsme_prisma$percent_use)
+
+# combine
+percent_udvarsme_all <- rbind(percent_udvarsme_trio,percent_udvarsme_prisma)
+```
+
+
+merge GBC with demo_mri
+```{r}
+demo_mri_gbc <- merge(x=ucla_demo_hcs_del, y=all_gbc_df, by="MRI_S_ID", all.x=TRUE)
+#demo_mri_gbc <- demo_mri_gbc %>% filter(SUBJECT_IDENTITY=="CONTROL" | SUBJECT_IDENTITY =="PATIENT-DEL")
+
+# change class to factor
+demo_mri_gbc$SUBJECT_IDENTITY <- factor(demo_mri_gbc$SUBJECT_IDENTITY)
+demo_mri_gbc$SUBJECTID <- factor(demo_mri_gbc$SUBJECTID)
+demo_mri_gbc$site <- factor(gsub("-[0-9]","",demo_mri_gbc$converted_timepoint))
+demo_mri_gbc$MRI_S_ID <- factor(demo_mri_gbc$MRI_S_ID)
+
+# list of voxel names
+gbc_names <- names(all_gbc_df)[which(!(names(all_gbc_df) %in% c("MRI_S_ID")))]
+```
+
+## Harmonize sites
+longCombat for TC 
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# set up longCombat variables
+# formula should match fixed effects in your subsequent analysis
+# subject id coded as random effect by (1|subject id variable)
+demovars <- c("MRI_S_ID","SUBJECTID","site","SUBJECT_IDENTITY","AGE","SEX","visit_index")
+features <- gbc_names
+idvar <- 'MRI_S_ID'
+batchvar <- 'site'
+timevar <- 'visit_index'
+formula <- 'SUBJECT_IDENTITY + AGE + SEX'
+ranef <- '(1|SUBJECTID)'
+
+# make data frame with columns for each variable in the model
+# one column for each variable in your formula as well as one column for each neuroimaging feature
+# input df should not have any unused columns or package will error
+# one row per unique scan
+combat_input_gbc_hcs_del <- demo_mri_gbc[,c(demovars,features)]
+
+# run longCombat
+gbc_combat <- longCombat(data=combat_input_gbc_hcs_del, idvar=idvar, timevar=timevar, batchvar=batchvar, features=features, formula=formula, ranef=ranef)
+
+# get the harmonized data
+gbc_combat_data <- gbc_combat$data_combat
+
+```
+
+save combat adjusted ciftis
+```{r}
+# combat dataframe to list of vectors
+gbc_combat_vec_list <- split(gbc_combat_data, seq(nrow(gbc_net_combat_data)))
+
+# vec_to_xii
+
+# write_xifti
+```
+
+
+
+function to get smoothed estimates with upper and lower SE bounds
+```{r}
+smooth_estimates_se <- function(gamm,smooth,n){
+  out <- smooth_estimates(gamm,smooth,n=n, partial_match = T)
+  out$selo <- out$est - out$se
+  out$sehi <- out$est + out$se
+  return(out)
+}
+
+# get smooth estimates shifted by GAMM intercept to allow plotting over original data
+smooth_estimates_se_b0 <- function(gamm,smooth,n){
+  out <- smooth_estimates(gamm,smooth,n=n, partial_match = T)
+  out$est <- out$est + gamm$coefficients["(Intercept)"]
+  out$selo <- out$est - out$se
+  out$sehi <- out$est + out$se
+  return(out)
+}
+```
+
+GAMM for harmonized GBC
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# combat feature names
+gbc_names_combat <- paste(gbc_names,".combat",sep="")
+
+# merge combat back with original
+demo_mri_gbc_hcs_del_combat <- merge(x=demo_mri_gbc, y=gbc_combat_data, by=c("MRI_S_ID","visit_index","site"))
+
+# generalized additive mixed model
+# function to print name in loop
+gam_name <- function(name){
+  print(name)
+  out <- gam(reformulate(c("s(AGE,by=SUBJECT_IDENTITY)","SUBJECT_IDENTITY","SEX","site","s(SUBJECTID, bs=\"re\")"), response=name),selection=TRUE,method="REML",data=demo_mri_gbc_hcs_del_combat)
+  return(out)
+}
+
+#gamm_gbc_all_combat <- lapply(gbc_names_combat,gam_name)
+#names(gamm_gbc_all_combat) <- gbc_names_combat
+
+# TODO: will run out of RAM trying to save voxel-wise GAMM outputs as list. Need to loop through each voxel and write only relevant test statistics (T or Beta? and p? for smoothed effects of age in each group) to a vector that can be mapped back to xifti. 
+
+# get empty vector to fill with gam results
+vec_gam <- data.frame(matrix(NA, nrow=1, ncol=length(gbc_names_combat)))
+names(vec_gam) <- gbc_names_combat
+vec_gam_hcs_f <- vec_gam
+vec_gam_hcs_p <- vec_gam
+vec_gam_del_f <- vec_gam
+vec_gam_del_p <- vec_gam
+for(name in gbc_names_combat){
+  print(name)
+  mod <- summary(gam(reformulate(c("s(AGE,by=SUBJECT_IDENTITY)","SUBJECT_IDENTITY","SEX","site","s(SUBJECTID, bs=\"re\")"), response=name), selection=TRUE, method="REML", data=demo_mri_gbc_hcs_del_combat))$s.table
+  vec_gam_hcs_f[name] <- mod["s(AGE):SUBJECT_IDENTITYCONTROL","F"]
+  vec_gam_hcs_p[name] <- mod["s(AGE):SUBJECT_IDENTITYCONTROL","p-value"]
+  vec_gam_del_f[name] <- mod["s(AGE):SUBJECT_IDENTITYPATIENT-DEL","F"]
+  vec_gam_del_p[name] <- mod["s(AGE):SUBJECT_IDENTITYPATIENT-DEL","p-value"]
+}
+ 
+#summary(gam(reformulate(c("s(AGE,by=SUBJECT_IDENTITY)","SUBJECT_IDENTITY","SEX","site","s(SUBJECTID, bs=\"re\")"), response="lh_1.combat"), selection=TRUE, method="REML", data=demo_mri_gbc_hcs_del_combat))$s.table
+
+# smooth estimate
+#smooth_gbc_all_combat <- lapply(gamm_gbc_all_combat, function(g) smooth_estimates_se_b0(gamm=g, smooth="s(AGE)", n=(40*12)))
+#names(smooth_gbc_all_combat) <- gbc_names_combat
+
+#stables <- lapply(gamm_gbc_all_combat,function(g) summary(g, freq=T)$s.table)
+#
+#del_age_pvals <- lapply(stables, function(s)s["s(AGE):SUBJECT_IDENTITYPATIENT-DEL","p-value"]) %>% do.call(rbind,.) %>% data.frame %>% rename("age_p_val"=".")
+#del_age_pvals$network <- rownames(del_age_pvals)
+#del_age_pvals$SUBJECT_IDENTITY <- "PATIENT-DEL"
+#
+#hcs_age_pvals <- lapply(stables, function(s)s["s(AGE):SUBJECT_IDENTITYCONTROL","p-value"]) %>% do.call(rbind,.) %>% data.frame  %>% rename("age_p_val"=".")
+#hcs_age_pvals$network <- rownames(hcs_age_pvals)
+#hcs_age_pvals$SUBJECT_IDENTITY <- "CONTROL"
+```
+
+p-vals for significant age effect by group
+```{r paged.print=FALSE}
+#print("Somatomotor.combat")
+#summary(gamm_tc_all_combat[[which(tc_names_combat == "Somatomotor.combat")]], freq=T)$s.table
+#print("Frontoparietal.combat")
+#summary(gamm_tc_all_combat[[which(tc_names_combat == "Frontoparietal.combat")]], freq=T)$s.table
+
+# 
+stables <- lapply(gamm_gbc_all_combat,function(g) summary(g, freq=T)$s.table)
+
+del_age_pvals <- lapply(stables, function(s)s["s(AGE):SUBJECT_IDENTITYPATIENT-DEL","p-value"]) %>% do.call(rbind,.) %>% data.frame %>% rename("age_p_val"=".")
+del_age_pvals$network <- rownames(del_age_pvals)
+del_age_pvals$SUBJECT_IDENTITY <- "PATIENT-DEL"
+
+hcs_age_pvals <- lapply(stables, function(s)s["s(AGE):SUBJECT_IDENTITYCONTROL","p-value"]) %>% do.call(rbind,.) %>% data.frame  %>% rename("age_p_val"=".")
+hcs_age_pvals$network <- rownames(hcs_age_pvals)
+hcs_age_pvals$SUBJECT_IDENTITY <- "CONTROL"
+
+# correct for multiple comparisons (one test for age effects per group per network)
+all_age_pvals <- rbind(del_age_pvals,hcs_age_pvals)
+all_age_pvals$age_p_val_fdr <- all_age_pvals$age_p_val %>% p.adjust(., method="fdr")
+all_age_pvals
+```
+
+plot all TC smooths
+```{r}
+# function to plot gamm and scatter
+plot_gamm_points_tc_combat <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,22)){
+  ggplot(data = smooth_tc_all_combat[[name]],  aes_string(x="AGE", y="est"))+
+  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
+  scale_x_continuous(limits=xlim,expand=c(0,0))+
+  scale_y_continuous(limits=ylim,expand=c(0,0))+
+  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
+  theme_classic() + 
+  theme(legend.title = element_blank())+
+  theme(axis.title.y = element_text(angle = 0,vjust=0.5))+
+  ylab(ylab)+
+  xlab(xlab)+
+  ggtitle(paste(name,"Thalamocortical GAMM"))+
+  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  geom_point(data=demo_mri_tc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
+  scale_shape_manual(values = c(17, 16)) 
+}
+
+lapply(tc_names_combat,function(x) plot_gamm_points_tc_combat(x,xlab="Age",ylab="TCC"))
+```
+
+plot three favorites
+```{r}
+plot_gamm_points_tc_combat_ylab <- function(name){
+  ggplot(data = smooth_tc_all_combat[[name]],  aes_string(x="AGE", y="est"))+
+  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
+  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
+  theme_classic() + 
+  theme(legend.title = element_blank())+
+  ylab("Thalamocortical connectivity (mean Fz)")+
+  ylim(-1,1)+
+  ggtitle(sub(".combat","",name))+
+  theme(plot.title = element_text(vjust=-6, hjust=0.1))+
+  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  geom_point(data=demo_mri_tc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
+  scale_shape_manual(values = c(17, 16)) 
+}
+
+plot_gamm_points_tc_combat_noylab <- function(name){
+  ggplot(data = smooth_tc_all_combat[[name]],  aes_string(x="AGE", y="est"))+
+  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
+  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
+  theme_classic() + 
+  theme(legend.title = element_blank(),axis.title.y=element_blank())+
+  theme(legend.title = element_blank(),axis.text.y=element_blank(),axis.title.y=element_blank())+
+  ylim(-1,1)+
+  ggtitle(sub(".combat","",name))+
+  theme(plot.title = element_text(vjust=-6, hjust=0.1))+
+  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  geom_point(data=demo_mri_tc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
+  scale_shape_manual(values = c(17, 16)) 
+}
+p1 <- plot_gamm_points_tc_combat_ylab("Frontoparietal.combat")
+p23 <- lapply(c("Somatomotor.combat","Auditory.combat"),function(x) plot_gamm_points_tc_combat_noylab(x))
+#grid.arrange(p3[[1]],p3[[2]],p3[[3]],nrow=1)
+
+#ggarange not displaying in rmd but works if pasted into console
+pf <- ggarrange(p1,p23[[1]],p23[[2]],nrow=1, common.legend=T,legend="right")
+#ggsave("~/Dropbox/PhD/bearden_lab/22q/analyses/longitudinal_gamm/tc_plots_som_fpn_dmn.png", device="png",width=13 ,height=4, units="in", dpi = 100, plot=pf)
+```
+plot with individual subject longitudinal lines
+```{r}
+plot_gamm_pointslines_tc_combat <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,22)){
+  ggplot(data = smooth_tc_all_combat[[name]],  aes_string(x="AGE", y="est"))+
+  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
+  scale_x_continuous(limits=xlim,expand=c(0,0))+
+  scale_y_continuous(limits=ylim,expand=c(0,0))+
+  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
+  theme_classic() + 
+  theme(legend.title = element_blank())+
+  theme(axis.title.y = element_text(angle = 0,vjust=0.5))+
+  ylab(ylab)+
+  xlab(xlab)+
+  ggtitle(paste(name,"Thalamocortical GAMM"))+
+  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  geom_point(data=demo_mri_tc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
+  scale_shape_manual(values = c(17, 16))+
+  geom_line(data=demo_mri_tc_hcs_del_combat, aes_string(group="SUBJECTID",color="SUBJECT_IDENTITY",x="AGE", y=name), alpha=0.5)
+}
+
+plot_lines <- plot_gamm_pointslines_tc_combat("Frontoparietal.combat",xlab="Age",ylab="TCC")
+plot_lines
+#lapply(tc_names_combat,function(x) plot_gamm_points_tc_combat(x,xlab="Age",ylab="TCC"))
+```
+
+winsorize data at 90% for outliers
+```{r paged.print=FALSE}
+tc_winsorized <- do.call(cbind, lapply(tc_names_combat, function(name) data.frame(Winsorize(demo_mri_tc_hcs_del_combat[,name], probs=c(0.05,0.95)))))
+tc_names_winsor <- paste0(tc_names_combat,".winsor")
+colnames(tc_winsorized) <- tc_names_winsor
+demo_mri_tc_hcs_del_combat[,tc_names_winsor] <- tc_winsorized
+
+# winsorized gamm
+gamm_tc_all_combat_wins <- lapply(tc_names_winsor,function(name) gam(reformulate(c("s(AGE,by=SUBJECT_IDENTITY)","SUBJECT_IDENTITY","SEX","site","s(SUBJECTID, bs=\"re\")"), response=name),selection=TRUE,method="REML",data=demo_mri_tc_hcs_del_combat))
+names(gamm_tc_all_combat_wins) <- tc_names_winsor
+
+# smooth estimate
+smooth_tc_all_combat_wins <- lapply(gamm_tc_all_combat_wins, function(g) smooth_estimates_se_b0(gamm=g, smooth="s(AGE)", n=(40*12)))
+names(smooth_tc_all_combat_wins) <- tc_names_winsor
+
+# winsorized p-vals
+stables_wins <- lapply(gamm_tc_all_combat_wins,function(g) summary(g, freq=T)$s.table)
+
+del_age_pvals_wins <- lapply(stables_wins, function(s)s["s(AGE):SUBJECT_IDENTITYPATIENT-DEL","p-value"]) %>% do.call(rbind,.) %>% data.frame %>% rename("age_p_val"=".")
+del_age_pvals_wins$network <- rownames(del_age_pvals_wins)
+del_age_pvals_wins$SUBJECT_IDENTITY <- "PATIENT-DEL"
+
+hcs_age_pvals_wins <- lapply(stables_wins, function(s)s["s(AGE):SUBJECT_IDENTITYCONTROL","p-value"]) %>% do.call(rbind,.) %>% data.frame  %>% rename("age_p_val"=".")
+hcs_age_pvals_wins$network <- rownames(hcs_age_pvals_wins)
+hcs_age_pvals_wins$SUBJECT_IDENTITY <- "CONTROL"
+
+# correct for multiple comparisons (one test for age effects per group per network)
+all_age_pvals_wins <- rbind(del_age_pvals_wins,hcs_age_pvals_wins)
+all_age_pvals_wins$age_p_val_fdr <- all_age_pvals_wins$age_p_val %>% p.adjust(., method="fdr")
+all_age_pvals_wins
+
+# plot FPN
+plot_gamm_points_tc_combat_wins <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,22)){
+  ggplot(data = smooth_tc_all_combat_wins[[name]],  aes_string(x="AGE", y="est"))+
+  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
+  scale_x_continuous(limits=xlim,expand=c(0,0))+
+  scale_y_continuous(limits=ylim,expand=c(0,0))+
+  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
+  theme_classic() + 
+  theme(legend.title = element_blank())+
+  theme(axis.title.y = element_text(angle = 0,vjust=0.5))+
+  ylab(ylab)+
+  xlab(xlab)+
+  ggtitle(paste(name,"Thalamocortical GAMM"))+
+  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  geom_point(data=demo_mri_tc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
+  scale_shape_manual(values = c(17, 16)) 
+}
+
+p_fpn_wins <- plot_gamm_points_tc_combat_wins("Frontoparietal.combat.winsor",xlab="Age",ylab="TCC")
+p_fpn_wins
+```
+
+## test trio and prisma separately as sanity check
+GAMM for trio only (no combat)
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# trio only
+demo_mri_tc_hcs_del_trio <- droplevels(filter(demo_mri_tc_hcs_del, site == "trio"))
+# GAMM
+gamm_tc_trio <- lapply(tc_names,function(name) gam(reformulate(c("s(AGE,by=SUBJECT_IDENTITY)","SUBJECT_IDENTITY","SEX","s(SUBJECTID, bs=\"re\")"), response=name),selection=TRUE,method="REML",data=demo_mri_tc_hcs_del_trio))
+names(gamm_tc_trio) <- tc_names
+
+# smooth estimate
+smooth_tc_trio <- lapply(gamm_tc_trio, function(g) smooth_estimates_se_b0(gamm=g, smooth="s(AGE)", n=(40*12)))
+names(smooth_tc_trio) <- tc_names
+```
+plot trio
+```{r}
+# function to plot gamm and scatter
+plot_gamm_points_tc_trio <- function(name){
+  ggplot(data = smooth_tc_trio[[name]],  aes_string(x="AGE", y="est"))+
+  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
+  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
+  theme_classic() + 
+  theme(legend.title = element_blank())+
+  ylab(paste("Mean",name))+
+  ggtitle(paste(name,"Thalamocortical GAMM (trio)"))+
+  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  geom_point(data=demo_mri_tc_hcs_del_trio, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY", shape="site")) 
+}
+
+lapply(tc_names,function(x) plot_gamm_points_tc_trio(x))
+```
+p-vals for trio only
+```{r}
+print("Somatomotor")
+summary(gamm_tc_trio[[which(tc_names == "Somatomotor")]], freq=T)$s.table
+
+print("Frontoparietal")
+summary(gamm_tc_trio[[which(tc_names == "Frontoparietal")]], freq=T)$s.table
+
+```
+
+
+GAMM for prisma only (no combat)
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+## prisma only
+#demo_mri_tc_hcs_del_prisma <- droplevels(filter(demo_mri_tc_hcs_del, site == "prisma"))
+## GAMM
+## TODO: prisma data won't work alone with gam, too few observations ("Model has more coefficients than data")
+#gamm_tc_prisma <- lapply(tc_names,function(name) gam(reformulate(c("s(AGE,by=SUBJECT_IDENTITY)","SUBJECT_IDENTITY","SEX","s(SUBJECTID, bs=\"re\")"), #response=name),selection=TRUE,method="REML",data=demo_mri_tc_hcs_del_prisma))
+#names(gamm_tc_prisma) <- tc_names
+#
+## smooth estimate
+#smooth_tc_prisma <- lapply(gamm_tc_prisma, function(g) smooth_estimates_se_b0(gamm=g, smooth="s(AGE)", n=(40*12)))
+#names(smooth_tc_prisma) <- tc_names
+```
+plot prisma
+```{r}
+## function to plot gamm and scatter
+#plot_gamm_points_tc_prisma <- function(name){
+#  ggplot(data = smooth_tc_prisma[[name]],  aes_string(x="AGE", y="est"))+
+#  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
+#  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
+#  theme_classic() + 
+#  theme(legend.title = element_blank())+
+#  ylab(paste("Mean",name))+
+#  ggtitle(paste(name,"Thalamocortical GAMM (prisma)"))+
+#  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+#  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+#  geom_point(data=demo_mri_tc_hcs_del_prisma, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY", shape="site")) 
+#}
+#
+#lapply(tc_names,function(x) plot_gamm_points_tc_prisma(x))
+```
+
+## test whole-thalamus
+GAMM for harmonized TC
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# combat feature names
+wtc_names_combat <- paste(wtc_names,".combat",sep="")
+
+
+
+# generalized additive mixed model
+gamm_wtc_all_combat <- lapply(wtc_names_combat,function(name) gam(reformulate(c("s(AGE,by=SUBJECT_IDENTITY)","SUBJECT_IDENTITY","SEX","site","s(SUBJECTID, bs=\"re\")"), response=name),selection=TRUE,method="REML",data=demo_mri_wtc_hcs_del_combat))
+names(gamm_wtc_all_combat) <- wtc_names_combat
+
+# smooth estimate
+smooth_wtc_all_combat <- lapply(gamm_wtc_all_combat, function(g) smooth_estimates_se_b0(gamm=g, smooth="s(AGE)", n=(40*12)))
+names(smooth_wtc_all_combat) <- wtc_names_combat
+
+# get smooths summary for p-vals
+stables_wt <- lapply(gamm_wtc_all_combat,function(g) summary(g, freq=T)$s.table)
+
+del_age_pvals_wt <- lapply(stables_wt, function(s)s["s(AGE):SUBJECT_IDENTITYPATIENT-DEL","p-value"]) %>% do.call(rbind,.) %>% data.frame %>% rename("age_p_val"=".")
+del_age_pvals_wt$network <- rownames(del_age_pvals_wt)
+del_age_pvals_wt$SUBJECT_IDENTITY <- "PATIENT-DEL"
+
+hcs_age_pvals_wt <- lapply(stables_wt, function(s)s["s(AGE):SUBJECT_IDENTITYCONTROL","p-value"]) %>% do.call(rbind,.) %>% data.frame  %>% rename("age_p_val"=".")
+hcs_age_pvals_wt$network <- rownames(hcs_age_pvals_wt)
+hcs_age_pvals_wt$SUBJECT_IDENTITY <- "CONTROL"
+
+# correct for multiple comparisons (one test for age effects per group per network)
+all_age_pvals_wt <- rbind(del_age_pvals_wt,hcs_age_pvals_wt)
+all_age_pvals_wt$age_p_val_fdr <- all_age_pvals_wt$age_p_val %>% p.adjust(., method="fdr")
+all_age_pvals_wt
+```
+
+plot frontoparietal whole-thalamus
+```{r}
+# plot FPN
+plot_gamm_points_wtc_combat <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,22)){
+  ggplot(data = smooth_wtc_all_combat[[name]],  aes_string(x="AGE", y="est"))+
+  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
+  scale_x_continuous(limits=xlim,expand=c(0,0))+
+  scale_y_continuous(limits=ylim,expand=c(0,0))+
+  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
+  theme_classic() + 
+  theme(legend.title = element_blank())+
+  theme(axis.title.y = element_text(angle = 0,vjust=0.5))+
+  ylab(ylab)+
+  xlab(xlab)+
+  ggtitle(paste(name,"Whole-thalamus GAMM"))+
+  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  geom_point(data=demo_mri_wtc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
+  scale_shape_manual(values = c(17, 16)) 
+}
+
+p_fpn_wt <- plot_gamm_points_wtc_combat("wt_Frontoparietal.combat",xlab="Age",ylab="TCC")
+p_fpn_wt
+```
+
+
+
+## test additional covariates
+longCombat with additional covars
+1) movement
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+## add additional covars to dataframe
+# movement
+demo_mri_tc_hcs_del_m <- merge(x=demo_mri_tc_hcs_del, y=percent_udvarsme_all, by.x="MRI_S_ID", by.y="sesh")
+
+## set up longCombat variables
+# formula should match fixed effects in your subsequent analysis
+# subject id coded as random effect by (1|subject id variable)
+demovars_m <- c("MRI_S_ID","SUBJECTID","site","SUBJECT_IDENTITY","AGE","SEX","visit_index","percent_udvarsme")
+features_m <- tc_names
+idvar_m <- 'MRI_S_ID'
+batchvar_m <- 'site'
+timevar_m <- 'visit_index'
+formula_m <- 'SUBJECT_IDENTITY + AGE + SEX + percent_udvarsme'
+ranef_m <- '(1|SUBJECTID)'
+
+## make data frame with columns for each variable in the model
+# one column for each variable in your formula as well as one column for each neuroimaging feature
+# input df should not have any unused columns or package will error
+# one row per unique scan
+combat_input_tc_hcs_del_m <- demo_mri_tc_hcs_del_m[,c(demovars_m, features_m)]
+
+# run longCombat
+tc_net_combat_m <- longCombat(data=combat_input_tc_hcs_del_m,  idvar=idvar_m,  timevar=timevar_m,  batchvar=batchvar_m,  features=features_m,  formula=formula_m,  ranef=ranef_m)
+
+# get the harmonized data
+tc_net_combat_data_m <- tc_net_combat_m$data_combat
+
+# merge combat back with original
+demo_mri_tc_hcs_del_combat_m <- merge(x=demo_mri_tc_hcs_del_m,  y=tc_net_combat_data_m,  by=c("MRI_S_ID","visit_index","site"))
+```
+
+GAMM for additional covars
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# combat feature names
+tc_names_combat <- paste(tc_names,".combat",sep="")
+
+# generalized additive mixed model
+gamm_mtc_all_combat <- lapply(tc_names_combat,function(name) gam(reformulate(c("s(AGE,by=SUBJECT_IDENTITY)","SUBJECT_IDENTITY","SEX","site","percent_udvarsme","s(SUBJECTID, bs=\"re\")"), response=name),selection=TRUE,method="REML",data=demo_mri_tc_hcs_del_combat_m))
+names(gamm_mtc_all_combat) <- tc_names_combat
+
+# smooth estimate
+smooth_mtc_all_combat <- lapply(gamm_mtc_all_combat, function(g) smooth_estimates_se_b0(gamm=g, smooth="s(AGE)", n=(40*12)))
+names(smooth_mtc_all_combat) <- tc_names_combat
+
+# get smooths summary for p-vals
+stables_m <- lapply(gamm_mtc_all_combat,function(g) summary(g, freq=T)$s.table)
+
+del_age_pvals_m <- lapply(stables_m,  function(s)s["s(AGE):SUBJECT_IDENTITYPATIENT-DEL","p-value"]) %>% do.call(rbind,.) %>% data.frame %>% rename("age_p_val"=".")
+del_age_pvals_m$network <- rownames(del_age_pvals_m)
+del_age_pvals_m$SUBJECT_IDENTITY <- "PATIENT-DEL"
+
+hcs_age_pvals_m <- lapply(stables_m,  function(s)s["s(AGE):SUBJECT_IDENTITYCONTROL","p-value"]) %>% do.call(rbind,.) %>% data.frame  %>% rename("age_p_val"=".")
+hcs_age_pvals_m$network <- rownames(hcs_age_pvals_m)
+hcs_age_pvals_m$SUBJECT_IDENTITY <- "CONTROL"
+
+# correct for multiple comparisons (one test for age effects per group per network)
+all_age_pvals_m <- rbind(del_age_pvals_m, hcs_age_pvals_m)
+all_age_pvals_m$age_p_val_fdr <- all_age_pvals_m$age_p_val %>% p.adjust(., method="fdr")
+all_age_pvals_m
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## test linear mixed effects models
+
+```{r}
+# combat feature names
+#tc_names_combat <- paste(tc_names,".combat",sep="")
+
+# generalized additive mixed model
+#amm_tc_all_combat <- lapply(tc_names_combat,function(name) gam(reformulate(c("s(AGE,by=SUBJECT_IDENTITY)","SUBJECT_IDENTITY","SEX","s(SUBJECTID, bs=\"re\")"), response=name),selection=TRUE,method="REML",data=demo_mri_tc_hcs_del_combat))
+#names(gamm_tc_all_combat) <- tc_names_combat
+#
+#lme4::lmer("Frontoparietal.combat ~ AGE * SUBJECT_IDENTITY + SEX + (1|SUBJECTID)", data=demo_mri_tc_hcs_del_combat, REML=TRUE) 
+#lme4::lmer("Somatomotor.combat ~ AGE * SUBJECT_IDENTITY + SEX + (1|SUBJECTID)", data=demo_mri_tc_hcs_del_combat, REML=TRUE) 
+#
+#lmerTest::lmer("Frontoparietal.combat ~ AGE * SUBJECT_IDENTITY + SEX + (1|SUBJECTID)", data=demo_mri_tc_hcs_del_combat, REML=TRUE) %>% summary
+#lmerTest::lmer("Somatomotor.combat ~ AGE * SUBJECT_IDENTITY + SEX + (1|SUBJECTID)", data=demo_mri_tc_hcs_del_combat, REML=TRUE) %>% summary
+#
+#lmerTest::lmer("Frontoparietal.combat ~ AGE * SUBJECT_IDENTITY + SEX + (1|SUBJECTID)", data=filter(demo_mri_tc_hcs_del_combat, MRI_S_ID %in% trio_sessions), REML=TRUE) %>% summary
+#lmerTest::lmer("Somatomotor.combat ~ AGE * SUBJECT_IDENTITY + SEX + (1|SUBJECTID)", data=filter(demo_mri_tc_hcs_del_combat, MRI_S_ID %in% trio_sessions), REML=TRUE) %>% summary
+
+
+```
+
+
+```{r}
+#demo_mri_tc_hcs_del_combat_u13 <- filter(demo_mri_tc_hcs_del_combat, AGE <= 13)
+#demo_mri_tc_hcs_del_combat_o13 <- filter(demo_mri_tc_hcs_del_combat, AGE > 13)
+
+```
+
+# test derivative of curves
+```{r}
+
+# get list of derivative objects
+dervs_del <- lapply(gamm_tc_all_combat, function(g) derivatives(object=g, term="s(AGE):SUBJECT_IDENTITYPATIENT-DEL",n_sim=100000))
+dervs_hcs <- lapply(gamm_tc_all_combat, function(g) derivatives(object=g, term="s(AGE):SUBJECT_IDENTITYCONTROL",n_sim=100000))
+
+# function to take derivative output that includes an age smooth output age range where CI doesn't include zero
+# adapted from https://github.com/pittnerdlab/22q11_longitudinal_cortical_sMRI/blob/main/01a_age_effects.Rmd
+get_sig_derv_ages <- function(gam, smooth){
+  # get derivative of specified smooth from gam
+  derv <- derivatives(object=gam, term=smooth,n_sim=100000)
+  
+  # get points where confidence interval doesn't include zero
+  sig <- sign(derv$lower) == sign(derv$upper)
+  
+  # get list of ages  
+  agelist <- derv$data[sig]
+  
+  ## create age range from list of ages
+  # set age gap (years) between significant ages to be considered new range
+  sigjump_brain<-0.23
+  j=1
+  ranges=""
+  if(length(agelist)>0) {
+    ranges<-round(agelist[[j]],digits=1)
+  }
+  while (j < length(agelist)) {
+    j<-j+1
+    diff<-agelist[[j]]-agelist[[j-1]]
+    if (diff > sigjump_brain) {
+      ranges<-paste0(ranges,"-",round(agelist[[j-1]],digits=1),"|",round(agelist[[j]],digits=1))
+    }
+    if(j==length(agelist)){
+      ranges<-paste0(ranges,"-",round(agelist[[j]],digits=1))
+    }
+  }
+  return(ranges)
+}
+
+#get_sig_derv_ages(gam=gamm_tc_all_combat[["Frontoparietal.combat"]], smooth="s(AGE):SUBJECT_IDENTITYPATIENT-DEL")
+sig_ages_del <- lapply(gamm_tc_all_combat, function(g) get_sig_derv_ages(gam=g, smooth="s(AGE):SUBJECT_IDENTITYPATIENT-DEL"))
+sig_ages_hcs <- lapply(gamm_tc_all_combat, function(g) get_sig_derv_ages(gam=g, smooth="s(AGE):SUBJECT_IDENTITYCONTROL"))
+
+# get max derivative value to set plot limits
+maxderv <- lapply(dervs_del, function(d) d[,"derivative"]) %>% do.call(rbind,.) %>% abs %>% max %>% round(digits=3)
+
+# function to plot derivatives
+plot_age_dervs <- function(derv,ylab="", xlab="",legend_position="right",ageranges=""){
+  # get derivative of specified smooth from gam
+  #derv <- derivatives(object=gam, term=smooth,n_sim=100000)
+  # get ages to mark start and end of sig age ranges on derivative plots
+  age_vlines <- ageranges %>% str_split(.,"\\|") %>% unlist %>% str_split(.,"-") %>% unlist %>% as.numeric
+  pl <- ggplot(data=derv, aes(x=data, y=1, fill=derivative))+
+      geom_raster(interpolate=FALSE)+
+      scale_x_continuous(limits=c(5.9,22),expand = c(0,0))+
+      scale_y_continuous(limits=c(0.5,1.5),expand = c(0,0))+
+      #scale_fill_viridis("rate of change", option="inferno")+
+      #scale_fill_gradient2(high="#dd4124",low="#00496f", mid="white", limits = c(min(derv$derivative),max(derv$derivative)))+ 
+      scale_fill_scico(palette="roma",direction=-1,limits=c(-maxderv,maxderv),name="Rate of change")+
+      #scale_fill_scico(palette="vik",direction=1,limits=c(-maxderv,maxderv),name="Rate of change")+
+      geom_vline(xintercept=age_vlines, color="white", linetype="dotted")+
+      theme_minimal()+
+      xlab(xlab)+
+      ylab(ylab)+
+      theme(axis.ticks.x = element_line(color="black"))+
+      theme(axis.ticks.y=element_blank())+
+      theme(axis.text.y=element_blank())+
+      theme(axis.title.y = element_text(angle = 0,vjust=0.5))+
+      theme(legend.position=legend_position)+
+      #theme(axis.title.y=element_blank())+
+      theme(panel.grid=element_blank())
+  return(pl)
+}
+
+plot_derv_fpn_del <- plot_age_dervs(dervs_del[["Frontoparietal.combat"]], ylab="22qDel",ageranges=sig_ages_del[["Frontoparietal.combat"]])
+plot_derv_fpn_del
+
+plot_derv_fpn_hcs <- plot_age_dervs(dervs_hcs[["Frontoparietal.combat"]], ylab="Control",xlab="Age",ageranges=sig_ages_hcs[["Frontoparietal.combat"]])
+plot_derv_som_del <- plot_age_dervs(dervs_del[["Somatomotor.combat"]], ylab="22qDel",ageranges=sig_ages_del[["Somatomotor.combat"]])
+plot_derv_som_hcs <- plot_age_dervs(dervs_hcs[["Somatomotor.combat"]], ylab="Control",xlab="Age",ageranges=sig_ages_hcs[["Somatomotor.combat"]])
+plot_derv_aud_del <- plot_age_dervs(dervs_del[["Auditory.combat"]], ylab="22qDel",ageranges=sig_ages_del[["Auditory.combat"]])
+plot_derv_aud_hcs <- plot_age_dervs(dervs_hcs[["Auditory.combat"]], ylab="Control",xlab="Age",ageranges=sig_ages_hcs[["Auditory.combat"]])
+
+plot_derv_fpn_del 
+plot_derv_fpn_hcs 
+plot_derv_som_del 
+plot_derv_som_hcs 
+plot_derv_aud_del 
+plot_derv_aud_hcs 
+
+# get frontoparietal GAMM plot
+plot_gamms_fpn <- plot_gamm_points_tc_combat(name="Frontoparietal.combat", ylab="FC")
+
+legend_gam <- get_legend(plot_gamms_fpn)
+legend_derv <- get_legend(plot_derv_fpn_hcs)
+legend_combo <- ggarrange(legend_gam,legend_derv,nrow=2)
+
+plot_gamms_dervs_fpn <- ggarrange(plot_gamms_fpn, plot_derv_fpn_del,plot_derv_fpn_hcs,nrow=3,legend="none",common.legend=T,align="v",heights=c(5,1,1))
+plot_gamms_dervs_fpn_legend <- ggarrange(plot_gamms_dervs_fpn,legend_combo,nrow=1)
+plot_gamms_dervs_fpn_legend
+
+# save frontoparietal GAMM plots with settings for printing for 45x45in poster
+ggsave(plot=plot_gamms_dervs_fpn_legend, filename="~/Dropbox/PhD/conferences/2022_ACNP/poster/2022_acnp_poster_frontoparietal_gamms.tiff",device="tiff", width=12, height=5.5, dpi=600, units="in")
+
+
+# get somatomotor GAMM plot
+plot_gamms_som <- plot_gamm_points_tc_combat(name="Somatomotor.combat", ylab="FC")
+
+#legend_gam <- get_legend(plot_gamms_fpn)
+#legend_derv <- get_legend(plot_derv_fpn_hcs)
+#legend_combo <- ggarrange(legend_gam,legend_derv,nrow=2)
+
+plot_gamms_dervs_som <- ggarrange(plot_gamms_som, plot_derv_som_del, plot_derv_som_hcs, nrow=3,legend="none", common.legend=T,align="v", heights=c(5,1,1))
+plot_gamms_dervs_som_legend <- ggarrange(plot_gamms_dervs_som,legend_combo,nrow=1)
+plot_gamms_dervs_som_legend
+
+# save frontoparietal GAMM plots with settings for printing for 45x45in poster
+ggsave(plot=plot_gamms_dervs_som_legend, filename="~/Dropbox/PhD/conferences/2022_ACNP/poster/2022_acnp_poster_somatomotor_gamms.tiff",device="tiff", width=12, height=5.5, dpi=600, units="in")
+```
+

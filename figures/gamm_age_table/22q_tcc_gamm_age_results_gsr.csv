@@ -1,0 +1,19 @@
+Group,Network,F,p,FDR_q,sig_age_range
+22qDel,Frontoparietal,5.8900,0.002,0.0177,7.5-12.8
+22qDel,Somatomotor,9.8400,0.002,0.0177,6-22.7
+22qDel,Cingulo Opercular,7.5300,0.007,0.0399,6-22.7
+22qDel,Auditory,5.4700,0.020,0.0915,6-21.4
+22qDel,Default,2.5300,0.031,0.0998,20.7-21.5
+22qDel,Dorsal Attention,2.4300,0.066,0.1690,
+22qDel,Posterior Multimodal,0.0100,0.930,0.9520,
+22qDel,Visual1,1.7900,0.180,0.3290,
+22qDel,Visual2,1.3900,0.240,0.3910,
+TD,Frontoparietal,1.0300,0.310,0.4320,
+TD,Somatomotor,0.0000,0.950,0.9520,
+TD,Cingulo Opercular,4.6000,0.033,0.0998,6-22.7
+TD,Auditory,2.5700,0.110,0.2200,
+TD,Default,0.4300,0.680,0.7630,
+TD,Dorsal Attention,3.0400,0.083,0.1870,
+TD,Posterior Multimodal,0.2800,0.600,0.7160,
+TD,Visual1,1.1900,0.310,0.4320,
+TD,Visual2,0.6300,0.430,0.5520,
