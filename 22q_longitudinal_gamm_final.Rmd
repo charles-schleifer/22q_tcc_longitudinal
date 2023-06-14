@@ -424,8 +424,11 @@ gamm_tc_all_combat <- lapply(tc_names_combat,function(name) gam(reformulate(c("s
 names(gamm_tc_all_combat) <- tc_names_combat
 
 # smooth estimate
-smooth_tc_all_combat <- lapply(gamm_tc_all_combat, function(g) smooth_estimates_se_b0(gamm=g, smooth="s(AGE)", n=(40*12)))
+smooth_tc_all_combat <- lapply(gamm_tc_all_combat, function(g) smooth_estimates_se(gamm=g, smooth="s(AGE)", n=(40*12)))
 names(smooth_tc_all_combat) <- tc_names_combat
+
+smooth_tc_all_combat_b0 <- lapply(gamm_tc_all_combat, function(g) smooth_estimates_se_b0(gamm=g, smooth="s(AGE)", n=(40*12)))
+names(smooth_tc_all_combat_b0) <- tc_names_combat
 
 ```
 
@@ -469,7 +472,7 @@ plot all TC smooths
 ```{r}
 # function to plot gamm and scatter
 plot_gamm_points_tc_combat <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,23)){
-  ggplot(data = smooth_tc_all_combat[[name]],  aes_string(x="AGE", y="est"))+
+  ggplot(data = smooth_tc_all_combat_b0[[name]],  aes_string(x="AGE", y="est"))+
   geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
   scale_x_continuous(limits=xlim,expand=c(0,0))+
   scale_y_continuous(limits=ylim,expand=c(0,0))+
@@ -492,7 +495,7 @@ lapply(tc_names_combat,function(x) plot_gamm_points_tc_combat(x,xlab="Age",ylab=
 plot two favorites
 ```{r}
 plot_gamm_points_tc_combat_ylab <- function(name){
-  ggplot(data = smooth_tc_all_combat[[name]],  aes_string(x="AGE", y="est"))+
+  ggplot(data = smooth_tc_all_combat_b0[[name]],  aes_string(x="AGE", y="est"))+
   geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
   geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
   theme_classic() + 
@@ -508,7 +511,7 @@ plot_gamm_points_tc_combat_ylab <- function(name){
 }
 
 plot_gamm_points_tc_combat_noylab <- function(name){
-  ggplot(data = smooth_tc_all_combat[[name]],  aes_string(x="AGE", y="est"))+
+  ggplot(data = smooth_tc_all_combat_b0[[name]],  aes_string(x="AGE", y="est"))+
   geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
   geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
   theme_classic() + 
@@ -532,7 +535,7 @@ pf <- ggarrange(p1,p2,nrow=1, common.legend=T,legend="right")
 plot with individual subject longitudinal lines
 ```{r}
 plot_gamm_pointslines_tc_combat <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,22)){
-  ggplot(data = smooth_tc_all_combat[[name]],  aes_string(x="AGE", y="est"))+
+  ggplot(data = smooth_tc_all_combat_b0[[name]],  aes_string(x="AGE", y="est"))+
   geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
   scale_x_continuous(limits=xlim,expand=c(0,0))+
   scale_y_continuous(limits=ylim,expand=c(0,0))+
@@ -554,6 +557,66 @@ plot_lines <- plot_gamm_pointslines_tc_combat("Frontoparietal.combat",xlab="Age"
 plot_lines
 #lapply(tc_names_combat,function(x) plot_gamm_points_tc_combat(x,xlab="Age",ylab="TCC"))
 ```
+
+plot partial residuals
+```{r}
+plot_gamm_resid_tc <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,23)){
+  resid <- add_partial_residuals(data=demo_mri_tc_hcs_del_combat,model=gamm_tc_all_combat[[name]])
+  resid_del <- filter(resid, SUBJECT_IDENTITY=="PATIENT-DEL")
+  resid_del$yvar <- resid_del$`s(AGE):SUBJECT_IDENTITYPATIENT-DEL`
+  resid_hcs <- filter(resid, SUBJECT_IDENTITY=="CONTROL")
+  resid_hcs$yvar <- resid_hcs$`s(AGE):SUBJECT_IDENTITYCONTROL`
+  ggplot()+
+    geom_point(data=resid_hcs, aes(x=AGE, y=yvar), color="deepskyblue") +
+    geom_point(data=resid_del, aes(x=AGE, y=yvar), color="red") +
+    geom_ribbon(data = smooth_tc_all_combat[[name]],aes(x = AGE, ymin = selo,ymax = sehi, fill = SUBJECT_IDENTITY),alpha = .18, linetype = 0)+
+    geom_line(data = smooth_tc_all_combat[[name]],aes(x = AGE, y = est, color = SUBJECT_IDENTITY),size = 1)+theme_bw()+
+    scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+    scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+    scale_x_continuous(limits=xlim,expand=c(0,0))+
+    scale_y_continuous(limits=ylim,expand=c(0,0))+
+    theme_classic() + 
+    theme(legend.title = element_blank())+
+    theme(axis.title.y = element_text(angle = 0,vjust=0.5))+
+    ylab(ylab)+
+    xlab(xlab)+
+    ggtitle(paste(gsub("_"," ",gsub(".combat","",name)),"Thalamocortical Connectivity"))
+}
+
+
+
+plot_gamm_resid_tc(name="Frontoparietal.combat",xlab="Age",ylab="TCC")
+
+plot_gamm_resid_tc(name="Somatomotor.combat",xlab="Age",ylab="TCC")
+
+```
+
+```{r}
+add_partial_residuals(data=demo_mri_tc_hcs_del_combat,model=gamm_tc_all_combat[["Frontoparietal.combat"]])
+
+function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,23)){
+  ggplot(data = smooth_tc_all_combat[[name]],  aes_string(x="AGE", y="est"))+
+  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
+  scale_x_continuous(limits=xlim,expand=c(0,0))+
+  scale_y_continuous(limits=ylim,expand=c(0,0))+
+  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
+  theme_classic() + 
+  theme(legend.title = element_blank())+
+  theme(axis.title.y = element_text(angle = 0,vjust=0.5))+
+  ylab(ylab)+
+  xlab(xlab)+
+  ggtitle(paste(gsub("_"," ",gsub(".combat","",name)),"Thalamocortical Connectivity"))+
+  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  geom_point(data=demo_mri_tc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
+  scale_shape_manual(values = c(17, 16)) 
+}
+
+
+lapply(tc_names_combat,function(x) plot_gamm_points_tc_combat(x,xlab="Age",ylab="TCC"))```
+
+```
+
 
 
 # test derivative of curves
@@ -616,7 +679,7 @@ plot_age_dervs <- function(derv,ylab="", xlab="",legend_position="right",agerang
       scale_y_continuous(limits=c(0.5,1.5),expand = c(0,0))+
       #scale_fill_viridis("rate of change", option="inferno")+
       #scale_fill_gradient2(high="#dd4124",low="#00496f", mid="white", limits = c(min(derv$derivative),max(derv$derivative)))+ 
-      scale_fill_scico(palette="roma",direction=-1,limits=c(-maxderv,maxderv),name="Rate of change")+
+      scale_fill_scico(palette="vik",direction=1,limits=c(-maxderv,maxderv),name="Rate of change")+
       #scale_fill_scico(palette="roma",direction=-1,limits=c(-0.65,0.65),name="Rate of change")+
       #scale_fill_scico(palette="vik",direction=1,limits=c(-maxderv,maxderv),name="Rate of change")+
       geom_vline(xintercept=age_vlines, color="white", linetype="dotted")+
