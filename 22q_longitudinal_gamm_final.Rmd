@@ -277,7 +277,7 @@ waterfall <- ggplot(ucla_demo_waterfall, aes(x=(AGEMONTH/12), y=as.factor(age1),
   geom_point(aes(shape=Scanner), color="black",alpha=0.7) + 
   scale_shape_manual(values = c(24,21)) + 
   theme_classic() + 
-  theme(text=element_text(family="Arial"))+
+  #theme(text=element_text(family="Arial"))+
   theme(axis.text.y=element_blank(), axis.ticks.x=element_blank(),axis.ticks.y=element_blank()) + 
   geom_line(aes(group=SUBJECTID,color=SUBJECT_IDENTITY),alpha=0.7) +
   scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
@@ -292,6 +292,7 @@ waterfall
 
 #ggsave(plot=waterfall, filename=file.path(project,"figures/demographics/waterfall_age.svg"), width=6, height=6, device = "svg")
 #ggsave(plot=waterfall, filename=file.path(project,"figures/demographics/waterfall_age.png"), width=6, height=6, device = "png")
+ggsave(plot=waterfall, filename=file.path(project,"figures/demographics/waterfall_age.pdf"), width=6, height=6, device = "pdf")
 
 
 ```
@@ -471,104 +472,105 @@ out_age_pvals$FDR_q %<>% signif(., digits=3) %>% sprintf("%.4f",.)
 plot all TC smooths
 ```{r}
 # function to plot gamm and scatter
-plot_gamm_points_tc_combat <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,23)){
-  ggplot(data = smooth_tc_all_combat_b0[[name]],  aes_string(x="AGE", y="est"))+
-  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
-  scale_x_continuous(limits=xlim,expand=c(0,0))+
-  scale_y_continuous(limits=ylim,expand=c(0,0))+
-  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
-  theme_classic() + 
-  theme(legend.title = element_blank())+
-  theme(axis.title.y = element_text(angle = 0,vjust=0.5))+
-  ylab(ylab)+
-  xlab(xlab)+
-  ggtitle(paste(gsub("_"," ",gsub(".combat","",name)),"Thalamocortical Connectivity"))+
-  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
-  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
-  geom_point(data=demo_mri_tc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
-  scale_shape_manual(values = c(17, 16)) 
-}
-
-lapply(tc_names_combat,function(x) plot_gamm_points_tc_combat(x,xlab="Age",ylab="TCC"))
+#plot_gamm_points_tc_combat <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,23)){
+#  ggplot(data = smooth_tc_all_combat_b0[[name]],  aes_string(x="AGE", y="est"))+
+#  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
+#  scale_x_continuous(limits=xlim,expand=c(0,0))+
+#  scale_y_continuous(limits=ylim,expand=c(0,0))+
+#  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
+#  theme_classic() + 
+#  theme(legend.title = element_blank())+
+#  theme(axis.title.y = element_text(angle = 0,vjust=0.5))+
+#  ylab(ylab)+
+#  xlab(xlab)+
+#  ggtitle(paste(gsub("_"," ",gsub(".combat","",name)),"Thalamocortical Connectivity"))+
+#  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+#  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+#  geom_point(data=demo_mri_tc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
+#  scale_shape_manual(values = c(17, 16)) 
+#}
+#
+#lapply(tc_names_combat,function(x) plot_gamm_points_tc_combat(x,xlab="Age",ylab="TCC"))
 ```
 
 plot two favorites
 ```{r}
-plot_gamm_points_tc_combat_ylab <- function(name){
-  ggplot(data = smooth_tc_all_combat_b0[[name]],  aes_string(x="AGE", y="est"))+
-  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
-  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
-  theme_classic() + 
-  theme(legend.title = element_blank())+
-  ylab("Thalamocortical connectivity (mean Fz)")+
-  ylim(-1,1)+
-  ggtitle(sub(".combat","",name))+
-  theme(plot.title = element_text(vjust=-6, hjust=0.1))+
-  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
-  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
-  geom_point(data=demo_mri_tc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
-  scale_shape_manual(values = c(17, 16)) 
-}
-
-plot_gamm_points_tc_combat_noylab <- function(name){
-  ggplot(data = smooth_tc_all_combat_b0[[name]],  aes_string(x="AGE", y="est"))+
-  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
-  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
-  theme_classic() + 
-  theme(legend.title = element_blank(),axis.title.y=element_blank())+
-  theme(legend.title = element_blank(),axis.text.y=element_blank(),axis.title.y=element_blank())+
-  ylim(-1,1)+
-  ggtitle(sub(".combat","",name))+
-  theme(plot.title = element_text(vjust=-6, hjust=0.1))+
-  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
-  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
-  geom_point(data=demo_mri_tc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
-  scale_shape_manual(values = c(17, 16)) 
-}
-p1 <- plot_gamm_points_tc_combat_ylab("Frontoparietal.combat")
-p2 <- plot_gamm_points_tc_combat_noylab("Somatomotor.combat")
+#plot_gamm_points_tc_combat_ylab <- function(name){
+#  ggplot(data = smooth_tc_all_combat_b0[[name]],  aes_string(x="AGE", y="est"))+
+#  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
+#  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
+#  theme_classic() + 
+#  theme(legend.title = element_blank())+
+#  ylab("Thalamocortical connectivity (mean Fz)")+
+#  ylim(-1,1)+
+#  ggtitle(sub(".combat","",name))+
+#  theme(plot.title = element_text(vjust=-6, hjust=0.1))+
+#  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+#  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+#  geom_point(data=demo_mri_tc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
+#  scale_shape_manual(values = c(17, 16)) 
+#}
+#
+#plot_gamm_points_tc_combat_noylab <- function(name){
+#  ggplot(data = smooth_tc_all_combat_b0[[name]],  aes_string(x="AGE", y="est"))+
+#  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
+#  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
+#  theme_classic() + 
+#  theme(legend.title = element_blank(),axis.title.y=element_blank())+
+#  theme(legend.title = element_blank(),axis.text.y=element_blank(),axis.title.y=element_blank())+
+#  ylim(-1,1)+
+#  ggtitle(sub(".combat","",name))+
+#  theme(plot.title = element_text(vjust=-6, hjust=0.1))+
+#  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+#  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+#  geom_point(data=demo_mri_tc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
+#  scale_shape_manual(values = c(17, 16)) 
+#}
+#p1 <- plot_gamm_points_tc_combat_ylab("Frontoparietal.combat")
+#p2 <- plot_gamm_points_tc_combat_noylab("Somatomotor.combat")
 
 #ggarange not displaying in rmd but works if pasted into console
-pf <- ggarrange(p1,p2,nrow=1, common.legend=T,legend="right")
+#pf <- ggarrange(p1,p2,nrow=1, common.legend=T,legend="right")
 #ggsave("~/Dropbox/PhD/bearden_lab/22q/analyses/longitudinal_gamm/tc_plots_som_fpn_dmn.png", device="png",width=13 ,height=4, units="in", dpi = 100, plot=pf)
 ```
 plot with individual subject longitudinal lines
 ```{r}
-plot_gamm_pointslines_tc_combat <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,22)){
-  ggplot(data = smooth_tc_all_combat_b0[[name]],  aes_string(x="AGE", y="est"))+
-  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
-  scale_x_continuous(limits=xlim,expand=c(0,0))+
-  scale_y_continuous(limits=ylim,expand=c(0,0))+
-  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
-  theme_classic() + 
-  theme(legend.title = element_blank())+
-  theme(axis.title.y = element_text(angle = 0,vjust=0.5))+
-  ylab(ylab)+
-  xlab(xlab)+
-  ggtitle(paste(name,"Thalamocortical GAMM"))+
-  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
-  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
-  geom_point(data=demo_mri_tc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
-  scale_shape_manual(values = c(17, 16))+
-  geom_line(data=demo_mri_tc_hcs_del_combat, aes_string(group="SUBJECTID",color="SUBJECT_IDENTITY",x="AGE", y=name), alpha=0.5)
-}
-
-plot_lines <- plot_gamm_pointslines_tc_combat("Frontoparietal.combat",xlab="Age",ylab="TCC")
-plot_lines
+#plot_gamm_pointslines_tc_combat <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,22)){
+#  ggplot(data = smooth_tc_all_combat_b0[[name]],  aes_string(x="AGE", y="est"))+
+#  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
+#  scale_x_continuous(limits=xlim,expand=c(0,0))+
+#  scale_y_continuous(limits=ylim,expand=c(0,0))+
+#  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
+#  theme_classic() + 
+#  theme(legend.title = element_blank())+
+#  theme(axis.title.y = element_text(angle = 0,vjust=0.5))+
+#  ylab(ylab)+
+#  xlab(xlab)+
+#  ggtitle(paste(name,"Thalamocortical GAMM"))+
+#  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+#  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+#  geom_point(data=demo_mri_tc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
+#  scale_shape_manual(values = c(17, 16))+
+#  geom_line(data=demo_mri_tc_hcs_del_combat, aes_string(group="SUBJECTID",color="SUBJECT_IDENTITY",x="AGE", y=name), alpha=0.5)
+#}
+#
+#plot_lines <- plot_gamm_pointslines_tc_combat("Frontoparietal.combat",xlab="Age",ylab="TCC")
+#plot_lines
 #lapply(tc_names_combat,function(x) plot_gamm_points_tc_combat(x,xlab="Age",ylab="TCC"))
 ```
 
-plot partial residuals
+plot all TC smooths with partial residuals
 ```{r}
-plot_gamm_resid_tc <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,23)){
+plot_gamm_resid_tc <- function(name,xlab="", ylab="",ylim=c(-1,1),xlim=c(5.9,23)){
   resid <- add_partial_residuals(data=demo_mri_tc_hcs_del_combat,model=gamm_tc_all_combat[[name]])
   resid_del <- filter(resid, SUBJECT_IDENTITY=="PATIENT-DEL")
   resid_del$yvar <- resid_del$`s(AGE):SUBJECT_IDENTITYPATIENT-DEL`
   resid_hcs <- filter(resid, SUBJECT_IDENTITY=="CONTROL")
   resid_hcs$yvar <- resid_hcs$`s(AGE):SUBJECT_IDENTITYCONTROL`
   ggplot()+
-    geom_point(data=resid_hcs, aes(x=AGE, y=yvar), color="deepskyblue") +
-    geom_point(data=resid_del, aes(x=AGE, y=yvar), color="red") +
+    geom_point(data=resid_hcs, aes(x=AGE, y=yvar, shape=site), color="deepskyblue") +
+    geom_point(data=resid_del, aes(x=AGE, y=yvar, shape=site), color="red") +
+    scale_shape_manual(values = c(17, 16))+
     geom_ribbon(data = smooth_tc_all_combat[[name]],aes(x = AGE, ymin = selo,ymax = sehi, fill = SUBJECT_IDENTITY),alpha = .18, linetype = 0)+
     geom_line(data = smooth_tc_all_combat[[name]],aes(x = AGE, y = est, color = SUBJECT_IDENTITY),size = 1)+theme_bw()+
     scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
@@ -585,38 +587,10 @@ plot_gamm_resid_tc <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,2
 
 
 
-plot_gamm_resid_tc(name="Frontoparietal.combat",xlab="Age",ylab="TCC")
-
-plot_gamm_resid_tc(name="Somatomotor.combat",xlab="Age",ylab="TCC")
-
+#plot_gamm_resid_tc(name="Frontoparietal.combat",xlab="Age",ylab="TCC")
+#plot_gamm_resid_tc(name="Somatomotor.combat",xlab="Age",ylab="TCC")
+lapply(tc_names_combat,function(x) plot_gamm_resid_tc(name=x,xlab="Age",ylab="TCC"))
 ```
-
-```{r}
-add_partial_residuals(data=demo_mri_tc_hcs_del_combat,model=gamm_tc_all_combat[["Frontoparietal.combat"]])
-
-function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,23)){
-  ggplot(data = smooth_tc_all_combat[[name]],  aes_string(x="AGE", y="est"))+
-  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
-  scale_x_continuous(limits=xlim,expand=c(0,0))+
-  scale_y_continuous(limits=ylim,expand=c(0,0))+
-  geom_line(aes_string(x = "AGE", y = "est", color = "SUBJECT_IDENTITY"),size = 1)+theme_bw()+
-  theme_classic() + 
-  theme(legend.title = element_blank())+
-  theme(axis.title.y = element_text(angle = 0,vjust=0.5))+
-  ylab(ylab)+
-  xlab(xlab)+
-  ggtitle(paste(gsub("_"," ",gsub(".combat","",name)),"Thalamocortical Connectivity"))+
-  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
-  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
-  geom_point(data=demo_mri_tc_hcs_del_combat, aes_string(x="AGE", y=name, color="SUBJECT_IDENTITY", fill="SUBJECT_IDENTITY",shape="site")) +
-  scale_shape_manual(values = c(17, 16)) 
-}
-
-
-lapply(tc_names_combat,function(x) plot_gamm_points_tc_combat(x,xlab="Age",ylab="TCC"))```
-
-```
-
 
 
 # test derivative of curves
@@ -710,7 +684,7 @@ plot_derv_som_hcs
 
 
 # get frontoparietal GAMM plot
-plot_gamms_fpn <- plot_gamm_points_tc_combat(name="Frontoparietal.combat", ylab="TCC")
+plot_gamms_fpn <- plot_gamm_resid_tc(name="Frontoparietal.combat", ylab="TCC")
 
 legend_gam <- get_legend(plot_gamms_fpn)
 legend_derv <- get_legend(plot_derv_fpn_hcs)
@@ -721,11 +695,11 @@ plot_gamms_dervs_fpn_legend <- ggarrange(plot_gamms_dervs_fpn,legend_combo,nrow=
 plot_gamms_dervs_fpn_legend
 
 # save frontoparietal GAMM plots with settings for printing for 45x45in poster
-#ggsave(plot=plot_gamms_dervs_fpn_legend, filename=file.path(project,"figures/fpn_som_age_curves/fpn_gamm_raw.pdf"),device="pdf",bg="transparent", width=10, height=5.5, dpi=1000, units="in")
+ggsave(plot=plot_gamms_dervs_fpn_legend, filename=file.path(project,"figures/fpn_som_age_curves/fpn_gamm_raw.pdf"),device="pdf",bg="transparent", width=10, height=5.5, dpi=1000, units="in")
 
 
 # get somatomotor GAMM plot
-plot_gamms_som <- plot_gamm_points_tc_combat(name="Somatomotor.combat", ylab="TCC")
+plot_gamms_som <- plot_gamm_resid_tc(name="Somatomotor.combat", ylab="TCC")
 
 #legend_gam <- get_legend(plot_gamms_fpn)
 #legend_derv <- get_legend(plot_derv_fpn_hcs)
@@ -736,11 +710,11 @@ plot_gamms_dervs_som_legend <- ggarrange(plot_gamms_dervs_som,legend_combo,nrow=
 plot_gamms_dervs_som_legend
 
 # save somatomotor GAMM plots with settings for printing for 45x45in poster
-#ggsave(plot=plot_gamms_dervs_som_legend, filename=file.path(project,"figures/fpn_som_age_curves/som_gamm_raw.pdf"),device="pdf",bg="transparent", width=10, height=5.5, dpi=1000, units="in")
+ggsave(plot=plot_gamms_dervs_som_legend, filename=file.path(project,"figures/fpn_som_age_curves/som_gamm_raw.pdf"),device="pdf",bg="transparent", width=10, height=5.5, dpi=1000, units="in")
 
 # get all plots and arrange for supplement
 gam_derv_plot <- function(name){
-  plot_gamm <- plot_gamm_points_tc_combat(name=name, ylab="TCC")
+  plot_gamm <- plot_gamm_resid_tc(name=name, ylab="TCC")
   plot_derv_del <- plot_age_dervs(dervs_del[[name]], ylab="22qDel",ageranges=sig_ages_del[[name]], maxderv=maxderv_all)
   plot_derv_hcs <- plot_age_dervs(dervs_hcs[[name]], ylab="Control",xlab="Age",ageranges=sig_ages_hcs[[name]], maxderv=maxderv_all)
   out <- ggarrange(plot_gamm, plot_derv_del, plot_derv_hcs, nrow=3,legend="none", common.legend=T,align="v", heights=c(5,1,1))
@@ -749,15 +723,22 @@ gam_derv_plot <- function(name){
 
 gam_derv_arrange <- ggarrange(gam_derv_plot("Frontoparietal.combat"),gam_derv_plot("Somatomotor.combat"),gam_derv_plot("Cingulo_Opercular.combat"),gam_derv_plot("Auditory.combat"),gam_derv_plot("Default.combat"),gam_derv_plot("Dorsal_Attention.combat"),gam_derv_plot("Posterior_Multimodal.combat"),gam_derv_plot("Visual1.combat"),gam_derv_plot("Visual2.combat"), nrow=3, ncol=3)
 
-gam_legend <- get_legend(plot_gamm_points_tc_combat(name="Frontoparietal.combat", ylab="TCC"))
+gam_legend <- get_legend(plot_gamm_resid_tc(name="Frontoparietal.combat", ylab="TCC"))
 derv_legend <- get_legend(plot_age_dervs(dervs_del[["Frontoparietal.combat"]], ylab="22qDel",ageranges=sig_ages_del[["Frontoparietal.combat"]], maxderv=maxderv_all))
 gam_derv_legend <- ggarrange(gam_legend, derv_legend, ncol=1)
 
-#ggsave(plot=gam_derv_arrange, filename=file.path(project,"figures/all_age_curves/all_tcc_gsr.svg"), width=16, height=16, units="in", device="svg")
-#ggsave(plot=gam_derv_arrange, filename=file.path(project,"figures/all_age_curves/all_tcc_gsr.png"), width=16, height=16, units="in", device="png", dpi=300, bg = "white")
+ggsave(plot=gam_derv_arrange, filename=file.path(project,"figures/all_age_curves/all_tcc_gsr.svg"), width=16, height=16, units="in", device="svg")
 
-#ggsave(plot=gam_derv_legend, filename=file.path(project,"figures/all_age_curves/all_tcc_legend_gsr.svg"), units="in", device="svg")
-#ggsave(plot=gam_derv_legend, filename=file.path(project,"figures/all_age_curves/all_tcc_legend_gsr.png"), units="in", device="png", dpi=300, bg = "white")
+ggsave(plot=gam_derv_arrange, filename=file.path(project,"figures/all_age_curves/all_tcc_gsr.pdf"), width=16, height=16, units="in", device="pdf")
+
+ggsave(plot=gam_derv_arrange, filename=file.path(project,"figures/all_age_curves/all_tcc_gsr.png"), width=16, height=16, units="in", device="png", dpi=300, bg = "white")
+
+
+ggsave(plot=gam_derv_legend, filename=file.path(project,"figures/all_age_curves/all_tcc_legend_gsr.svg"), units="in", device="svg")
+
+ggsave(plot=gam_derv_legend, filename=file.path(project,"figures/all_age_curves/all_tcc_legend_gsr.pdf"), units="in", device="pdf")
+
+ggsave(plot=gam_derv_legend, filename=file.path(project,"figures/all_age_curves/all_tcc_legend_gsr.png"), units="in", device="png", dpi=300, bg = "white")
 
 
 ```
