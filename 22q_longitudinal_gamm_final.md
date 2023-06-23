@@ -1,18 +1,26 @@
----
-title: "22qDel Longitudinal Thalamocortical GAMM"
-author: "Charles Schleifer"
-date: "6/23/2022"
-output: github_document
----
+22qDel Longitudinal Thalamocortical GAMM
+================
+Charles Schleifer
+6/23/2022
+
 ## Overview
-This script uses Generalized Additive Mixed Models (GAMMs) to model non-parametric age trajectories for thalamocortical functional network connectivity in 22qDel patients and typical controls. A random effects implementation of the ComBat algorithm (longCombat) is used to harmonize data from multiple sites.  
+
+This script uses Generalized Additive Mixed Models (GAMMs) to model
+non-parametric age trajectories for thalamocortical functional network
+connectivity in 22qDel patients and typical controls. A random effects
+implementation of the ComBat algorithm (longCombat) is used to harmonize
+data from multiple sites.
 
 ### Set up workspace
-ciftiTools is an R package for analysis and plotting of CIFTI dscalar, dlabel, and dtseries files:
-https://htmlpreview.github.io/?https://github.com/mandymejia/ciftiTools/blob/master/vignettes/ciftiTools_vignette.html
-many ciftiTools functions require connectome workbench to be downloaded and installed locally:
-https://www.humanconnectome.org/software/get-connectome-workbench
-```{r message=FALSE, warning=FALSE, paged.print=FALSE, results='hide'}
+
+ciftiTools is an R package for analysis and plotting of CIFTI dscalar,
+dlabel, and dtseries files:
+<https://htmlpreview.github.io/?https://github.com/mandymejia/ciftiTools/blob/master/vignettes/ciftiTools_vignette.html>
+many ciftiTools functions require connectome workbench to be downloaded
+and installed locally:
+<https://www.humanconnectome.org/software/get-connectome-workbench>
+
+``` r
 # clear workspace
 rm(list = ls(all.names = TRUE))
 
@@ -65,14 +73,32 @@ rgl::setupKnitr()
 rgl::rgl.open(); rgl::rgl.close()
 ```
 
-###load CAB-NP atlas
-RSN atlas of whole cortex and subcortex to use for thalamus striatum connectivity analysis. Atlas can be downloaded here: https://github.com/ColeLab/ColeAnticevicNetPartition
-load key for Ji parcels/networks
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+\###load CAB-NP atlas RSN atlas of whole cortex and subcortex to use for
+thalamus striatum connectivity analysis. Atlas can be downloaded here:
+<https://github.com/ColeLab/ColeAnticevicNetPartition> load key for Ji
+parcels/networks
+
+``` r
 ji_key <- read.table(file.path(project,"CAB-NP/CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_parcels_LR_LabelKey.txt"),header=T)
 ji_net_keys <- ji_key[,c("NETWORKKEY","NETWORK")] %>% distinct %>% arrange(NETWORKKEY)
 print(ji_net_keys)
+```
 
+    ##    NETWORKKEY              NETWORK
+    ## 1           1              Visual1
+    ## 2           2              Visual2
+    ## 3           3          Somatomotor
+    ## 4           4    Cingulo-Opercular
+    ## 5           5     Dorsal-Attention
+    ## 6           6             Language
+    ## 7           7       Frontoparietal
+    ## 8           8             Auditory
+    ## 9           9              Default
+    ## 10         10 Posterior-Multimodal
+    ## 11         11   Ventral-Multimodal
+    ## 12         12     Orbito-Affective
+
+``` r
 # read cifti with subcortical structures labeled 
 xii_Ji_parcel <- read_cifti(file.path(project,"CAB-NP/CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_parcels_LR.dscalar.nii"), brainstructures = "all")
 xii_Ji_network <- read_cifti(file.path(project,"CAB-NP/CortexSubcortex_ColeAnticevic_NetPartition_wSubcorGSR_netassignments_LR.dscalar.nii"), brainstructures = "all")
@@ -82,8 +108,13 @@ xii_Ji_network <- read_cifti(file.path(project,"CAB-NP/CortexSubcortex_ColeAntic
 ```
 
 ### Load individual TC connectivity CSVs
-computed by 22q_multisite_networkTC_save_individual.R and saved as a CSV with one value per network representing the z-transformed pearson correlation between signals in the thalamic and cortical subsets of that network
-```{r message=FALSE, warning=FALSE, paged.print=FALSE, results='hide'}
+
+computed by 22q_multisite_networkTC_save_individual.R and saved as a CSV
+with one value per network representing the z-transformed pearson
+correlation between signals in the thalamic and cortical subsets of that
+network
+
+``` r
 # paths to sessions directories
 trio_dir <- file.path(hoffman,"22q/qunex_studyfolder/sessions")
 prisma_dir <- file.path(hoffman,"22qPrisma/qunex_studyfolder/sessions")
@@ -131,12 +162,18 @@ setDT(all_tc)
 all_tc_wide <- reshape2::dcast(all_tc, MRI_S_ID + site ~ NETWORK, value.var="TC_Fz") 
 ```
 
-
 ### load sistat data and get lists of scans to use
-all sistat tables should be exported as CSVs into a single directory
-the next several chunks deal with reading, cleaning and annotating the data exported from sistat, and then age matching
-the hcs sample is younger than del due to a large amount of very young hcs subjects. plan is to match samples by using followup timepoints rather than baseline for some younger participants, and dropping several older del subjects, and younger hcs subjects (prioritizing dropping subjects with worse motion stats when possible)
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+all sistat tables should be exported as CSVs into a single directory the
+next several chunks deal with reading, cleaning and annotating the data
+exported from sistat, and then age matching the hcs sample is younger
+than del due to a large amount of very young hcs subjects. plan is to
+match samples by using followup timepoints rather than baseline for some
+younger participants, and dropping several older del subjects, and
+younger hcs subjects (prioritizing dropping subjects with worse motion
+stats when possible)
+
+``` r
 # set location of directory with ucla sistat CSVs
 csvdir_ucla <- file.path(project,"demographics/ucla_sistat")
 
@@ -163,7 +200,8 @@ ucla_demo$SEX <- factor(ucla_demo$SEX,levels=c(0,1),labels=c("F","M"))
 ```
 
 Temporary: read temporary csv with several subjects not yet in sistat
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+``` r
 # TODO: this chunk is temporary until sistat is updated 
 # TODO: note: q_0526 sex was "na" in original sheet, changed to M because combat can't have NAs
 # read new data
@@ -183,9 +221,10 @@ demo_add$CONVERTEDVISITNUM <- 2
 # append to ucla demo
 ucla_demo <- rbind(ucla_demo,demo_add)
 ```
- 
+
 continue regular steps
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+``` r
 # subset demo_mri for used scans
 ucla_demo <- filter(ucla_demo, MRI_S_ID %in% all_sessions)
 
@@ -242,23 +281,38 @@ timepoints <- lapply(1:nrow(ucla_demo_agelim_group),function(r) gettp(r,ucla_dem
 ucla_demo_hcs_del <- merge(x=ucla_demo_agelim_group,y=timepoints, by=c("SUBJECTID","CONVERTEDVISITNUM"))
 
 ucla_demo_hcs_del$visit_index %<>% as.factor
-
 ```
 
 All timepoints, pre-matching demographics summary
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+``` r
 demo_summary <- CreateTableOne(data=ucla_demo_hcs_del,vars=c("AGE","SEX"),strata="SUBJECT_IDENTITY",addOverall=F)
 print(demo_summary, showAllLevels=T)
 ```
 
+    ##                  Stratified by SUBJECT_IDENTITY
+    ##                   level CONTROL       PATIENT-DEL   p      test
+    ##   n                       108           112                    
+    ##   AGE (mean (SD))       13.54 (4.44)  15.78 (4.59)  <0.001     
+    ##   SEX (%)         F        52 (48.1)     70 (62.5)   0.045     
+    ##                   M        56 (51.9)     42 (37.5)
+
 Baseline pre-matching summary
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+``` r
 demo_summary_bl <- CreateTableOne(data=filter(ucla_demo_hcs_del, ucla_demo_hcs_del$visit_index == 1),vars=c("AGE","SEX"),strata="SUBJECT_IDENTITY",addOverall=F)
 print(demo_summary_bl)
 ```
 
+    ##                  Stratified by SUBJECT_IDENTITY
+    ##                   CONTROL       PATIENT-DEL   p      test
+    ##   n                  69            65                    
+    ##   AGE (mean (SD)) 13.44 (4.76)  14.39 (4.56)   0.242     
+    ##   SEX = M (%)        35 (50.7)     24 (36.9)   0.151
+
 Age waterfall plot
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+``` r
 ucla_demo_waterfall <- ucla_demo_hcs_del
 ucla_demo_waterfall$Scanner <- gsub("-[0-9]","",ucla_demo_waterfall$converted_timepoint)
 ucla_demo_waterfall$Scanner %<>% gsub("T","trio",.)
@@ -284,16 +338,20 @@ waterfall <- ggplot(ucla_demo_waterfall, aes(x=(AGEMONTH/12), y=as.factor(age1),
   coord_cartesian(clip = "off")
 
 waterfall
+```
 
+![](22q_longitudinal_gamm_final_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
+
+``` r
 #ggsave(plot=waterfall, filename=file.path(project,"figures/demographics/waterfall_age.svg"), width=6, height=6, device = "svg")
 #ggsave(plot=waterfall, filename=file.path(project,"figures/demographics/waterfall_age.png"), width=6, height=6, device = "png")
 #ggsave(plot=waterfall, filename=file.path(project,"figures/demographics/waterfall_age.pdf"), width=6, height=6, device = "pdf")
 ```
 
+get motion data for all sessions by reading movement scrubbing files on
+hoffman
 
-get motion data for all sessions by reading movement scrubbing files on hoffman
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
-
+``` r
 # function to get mapping between boldn and run name from session_hcp.txt
 get_boldn_names <- function(sesh,sessions_dir){
   hcptxt <- read.table(file.path(sessions_dir,sesh,"session_hcp.txt"),sep=":",comment.char="#",fill=T,strip.white=T,col.names=c(1:4)) %>% as.data.frame()
@@ -336,11 +394,9 @@ percent_udvarsme_prisma$percent_use <- as.numeric(percent_udvarsme_prisma$percen
 percent_udvarsme_all <- rbind(percent_udvarsme_trio,percent_udvarsme_prisma)
 ```
 
-
-
 merge TC with demo_mri
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
 
+``` r
 demo_mri_tc <- merge(x=ucla_demo_hcs_del, y=all_tc_wide, by="MRI_S_ID")
 demo_mri_tc_hcs_del <- demo_mri_tc %>% filter(SUBJECT_IDENTITY=="CONTROL" | SUBJECT_IDENTITY =="PATIENT-DEL")
 
@@ -355,8 +411,10 @@ tc_names <- names(all_tc_wide)[which(!(names(all_tc_wide) %in% c("MRI_S_ID", "si
 ```
 
 ### Harmonize sites
-longCombat for TC 
-```{r message=FALSE, warning=FALSE, paged.print=FALSE, results='hide'}
+
+longCombat for TC
+
+``` r
 # set up longCombat variables
 # formula should match fixed effects in your subsequent analysis
 # subject id coded as random effect by (1|subject id variable)
@@ -385,8 +443,10 @@ demo_mri_tc_hcs_del_combat <- merge(x=demo_mri_tc_hcs_del, y=tc_net_combat_data,
 ```
 
 ### GAMMs
+
 function to get smoothed estimates with upper and lower SE bounds
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+``` r
 smooth_estimates_se <- function(gamm,smooth,n){
   out <- smooth_estimates(gamm,smooth,n=n, partial_match = T)
   out$selo <- out$est - out$se
@@ -405,7 +465,8 @@ smooth_estimates_se_b0 <- function(gamm,smooth,n){
 ```
 
 GAMM for harmonized TC
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+``` r
 # combat feature names
 tc_names_combat <- paste(tc_names,".combat",sep="")
 
@@ -427,7 +488,8 @@ names(smooth_tc_all_combat_b0) <- tc_names_combat
 ```
 
 p-vals for significant age effect by group
-```{r message=FALSE, warning=FALSE, paged.print=FALSE, results='hide'}
+
+``` r
 #print("Somatomotor.combat")
 #summary(gamm_tc_all_combat[[which(tc_names_combat == "Somatomotor.combat")]], freq=T)$s.table
 #print("Frontoparietal.combat")
@@ -451,7 +513,8 @@ all_age_pvals
 ```
 
 make pretty table for export
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+``` r
 out_age_pvals <- all_age_pvals[,c("SUBJECT_IDENTITY","Network","F","age_p_val","age_p_val_fdr")]
 rownames(out_age_pvals) <- NULL
 out_age_pvals <- rename(out_age_pvals, "p"="age_p_val","FDR_q"="age_p_val_fdr", "Group"="SUBJECT_IDENTITY")
@@ -461,12 +524,35 @@ out_age_pvals$F %<>% round(., digits=2) %>% sprintf("%.4f",.)
 out_age_pvals$p %<>% signif(., digits=2) %>% sprintf("%.3f",.)
 out_age_pvals$FDR_q %<>% signif(., digits=3) %>% sprintf("%.4f",.)
 out_age_pvals
-# for export, skip to derivative section to merge with significant age ranges
+```
 
+    ##     Group              Network      F     p  FDR_q
+    ## 1  22qDel             Auditory 5.4700 0.020 0.0915
+    ## 2  22qDel    Cingulo_Opercular 7.5300 0.007 0.0399
+    ## 3  22qDel              Default 2.5300 0.031 0.0998
+    ## 4  22qDel     Dorsal_Attention 2.4300 0.066 0.1690
+    ## 5  22qDel       Frontoparietal 5.8900 0.002 0.0177
+    ## 6  22qDel Posterior_Multimodal 0.0100 0.930 0.9520
+    ## 7  22qDel          Somatomotor 9.8400 0.002 0.0177
+    ## 8  22qDel              Visual1 1.7900 0.180 0.3290
+    ## 9  22qDel              Visual2 1.3900 0.240 0.3910
+    ## 10     TD             Auditory 2.5700 0.110 0.2200
+    ## 11     TD    Cingulo_Opercular 4.6000 0.033 0.0998
+    ## 12     TD              Default 0.4300 0.680 0.7630
+    ## 13     TD     Dorsal_Attention 3.0400 0.083 0.1870
+    ## 14     TD       Frontoparietal 1.0300 0.310 0.4320
+    ## 15     TD Posterior_Multimodal 0.2800 0.600 0.7160
+    ## 16     TD          Somatomotor 0.0000 0.950 0.9520
+    ## 17     TD              Visual1 1.1900 0.310 0.4320
+    ## 18     TD              Visual2 0.6300 0.430 0.5520
+
+``` r
+# for export, skip to derivative section to merge with significant age ranges
 ```
 
 plot all TC smooths
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+``` r
 # function to plot gamm and scatter
 #plot_gamm_points_tc_combat <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,23)){
 #  ggplot(data = smooth_tc_all_combat_b0[[name]],  aes_string(x="AGE", y="est"))+
@@ -490,7 +576,8 @@ plot all TC smooths
 ```
 
 plot two favorites
-```{r}
+
+``` r
 #plot_gamm_points_tc_combat_ylab <- function(name){
 #  ggplot(data = smooth_tc_all_combat_b0[[name]],  aes_string(x="AGE", y="est"))+
 #  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
@@ -531,7 +618,8 @@ plot two favorites
 ```
 
 plot with individual subject longitudinal lines
-```{r}
+
+``` r
 #plot_gamm_pointslines_tc_combat <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,22)){
 #  ggplot(data = smooth_tc_all_combat_b0[[name]],  aes_string(x="AGE", y="est"))+
 #  geom_ribbon(aes_string(x = "AGE", ymin = "selo",ymax = "sehi", fill = "SUBJECT_IDENTITY"),alpha = .18, linetype = 0)+
@@ -557,7 +645,8 @@ plot with individual subject longitudinal lines
 ```
 
 plot all TC smooths with partial residuals
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+``` r
 plot_gamm_resid_tc <- function(name,xlab="", ylab="",ylim=c(-1,1),xlim=c(5.9,23)){
   resid <- add_partial_residuals(data=demo_mri_tc_hcs_del_combat,model=gamm_tc_all_combat[[name]])
   resid_del <- filter(resid, SUBJECT_IDENTITY=="PATIENT-DEL")
@@ -587,10 +676,53 @@ plot_gamm_resid_tc <- function(name,xlab="", ylab="",ylim=c(-1,1),xlim=c(5.9,23)
 lapply(tc_names_combat,function(x) plot_gamm_resid_tc(name=x,xlab="Age",ylab="TCC"))
 ```
 
+    ## [[1]]
+
+![](22q_longitudinal_gamm_final_files/figure-gfm/unnamed-chunk-20-1.png)<!-- -->
+
+    ## 
+    ## [[2]]
+
+![](22q_longitudinal_gamm_final_files/figure-gfm/unnamed-chunk-20-2.png)<!-- -->
+
+    ## 
+    ## [[3]]
+
+![](22q_longitudinal_gamm_final_files/figure-gfm/unnamed-chunk-20-3.png)<!-- -->
+
+    ## 
+    ## [[4]]
+
+![](22q_longitudinal_gamm_final_files/figure-gfm/unnamed-chunk-20-4.png)<!-- -->
+
+    ## 
+    ## [[5]]
+
+![](22q_longitudinal_gamm_final_files/figure-gfm/unnamed-chunk-20-5.png)<!-- -->
+
+    ## 
+    ## [[6]]
+
+![](22q_longitudinal_gamm_final_files/figure-gfm/unnamed-chunk-20-6.png)<!-- -->
+
+    ## 
+    ## [[7]]
+
+![](22q_longitudinal_gamm_final_files/figure-gfm/unnamed-chunk-20-7.png)<!-- -->
+
+    ## 
+    ## [[8]]
+
+![](22q_longitudinal_gamm_final_files/figure-gfm/unnamed-chunk-20-8.png)<!-- -->
+
+    ## 
+    ## [[9]]
+
+![](22q_longitudinal_gamm_final_files/figure-gfm/unnamed-chunk-20-9.png)<!-- -->
 
 test derivative of curves
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
 
+``` r
 # get list of derivative objects
 dervs_del <- lapply(gamm_tc_all_combat, function(g) derivatives(object=g, term="s(AGE):SUBJECT_IDENTITYPATIENT-DEL",n_sim=100000))
 dervs_hcs <- lapply(gamm_tc_all_combat, function(g) derivatives(object=g, term="s(AGE):SUBJECT_IDENTITYCONTROL",n_sim=100000))
@@ -664,7 +796,11 @@ plot_age_dervs <- function(derv,ylab="", xlab="",legend_position="right",agerang
 
 plot_derv_fpn_del <- plot_age_dervs(dervs_del[["Frontoparietal.combat"]], ylab="22qDel",ageranges=sig_ages_del[["Frontoparietal.combat"]])
 plot_derv_fpn_del
+```
 
+![](22q_longitudinal_gamm_final_files/figure-gfm/unnamed-chunk-21-1.png)<!-- -->
+
+``` r
 plot_derv_fpn_hcs <- plot_age_dervs(dervs_hcs[["Frontoparietal.combat"]], ylab="Control",xlab="Age",ageranges=sig_ages_hcs[["Frontoparietal.combat"]])
 plot_derv_som_del <- plot_age_dervs(dervs_del[["Somatomotor.combat"]], ylab="22qDel",ageranges=sig_ages_del[["Somatomotor.combat"]])
 plot_derv_som_hcs <- plot_age_dervs(dervs_hcs[["Somatomotor.combat"]], ylab="Control",xlab="Age",ageranges=sig_ages_hcs[["Somatomotor.combat"]])
@@ -679,7 +815,11 @@ legend_combo <- ggarrange(legend_gam,legend_derv,nrow=2)
 plot_gamms_dervs_fpn <- ggarrange(plot_gamms_fpn, plot_derv_fpn_del,plot_derv_fpn_hcs,nrow=3,legend="none",common.legend=T,align="v",heights=c(5,1,1))
 plot_gamms_dervs_fpn_legend <- ggarrange(plot_gamms_dervs_fpn,legend_combo,nrow=1)
 plot_gamms_dervs_fpn_legend
+```
 
+![](22q_longitudinal_gamm_final_files/figure-gfm/unnamed-chunk-21-2.png)<!-- -->
+
+``` r
 # save frontoparietal GAMM plots with settings for printing for 45x45in poster
 #ggsave(plot=plot_gamms_dervs_fpn_legend, filename=file.path(project,"figures/fpn_som_age_curves/fpn_gamm_raw.pdf"),device="pdf",bg="transparent", width=10, height=5.5, dpi=1000, units="in")
 
@@ -694,7 +834,11 @@ plot_gamms_som <- plot_gamm_resid_tc(name="Somatomotor.combat", ylab="TCC")
 plot_gamms_dervs_som <- ggarrange(plot_gamms_som, plot_derv_som_del, plot_derv_som_hcs, nrow=3,legend="none", common.legend=T,align="v", heights=c(5,1,1))
 plot_gamms_dervs_som_legend <- ggarrange(plot_gamms_dervs_som,legend_combo,nrow=1)
 plot_gamms_dervs_som_legend
+```
 
+![](22q_longitudinal_gamm_final_files/figure-gfm/unnamed-chunk-21-3.png)<!-- -->
+
+``` r
 # save somatomotor GAMM plots with settings for printing for 45x45in poster
 #ggsave(plot=plot_gamms_dervs_som_legend, filename=file.path(project,"figures/fpn_som_age_curves/som_gamm_raw.pdf"),device="pdf",bg="transparent", width=10, height=5.5, dpi=1000, units="in")
 
@@ -723,7 +867,8 @@ gam_derv_legend <- ggarrange(gam_legend, derv_legend, ncol=1)
 ```
 
 add derivitave significant ranges to age stats table
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+``` r
 # get significant age ranges
 sig_ages_del_df <- do.call(rbind,sig_ages_del) %>% as.data.frame
 colnames(sig_ages_del_df) <- "sig_age_range"
@@ -739,15 +884,38 @@ sig_ages_hcs_df$Group <- "TD"
 out_age_pvals_derv <- merge(x=out_age_pvals,y=rbind(sig_ages_del_df,sig_ages_hcs_df), by=c("Group","Network"))
 out_age_pvals_derv <- arrange(out_age_pvals_derv, Group, factor(Network,levels=c("Frontoparietal","Somatomotor","Cingulo_Opercular","Auditory","Default","Dorsal_Attention","Posterior_Multimodal","Visual1","Visual2")))
 out_age_pvals_derv
+```
+
+    ##     Group              Network      F     p  FDR_q sig_age_range
+    ## 1  22qDel       Frontoparietal 5.8900 0.002 0.0177      7.5-12.8
+    ## 2  22qDel          Somatomotor 9.8400 0.002 0.0177        6-22.7
+    ## 3  22qDel    Cingulo_Opercular 7.5300 0.007 0.0399        6-22.7
+    ## 4  22qDel             Auditory 5.4700 0.020 0.0915        6-21.4
+    ## 5  22qDel              Default 2.5300 0.031 0.0998     20.7-21.5
+    ## 6  22qDel     Dorsal_Attention 2.4300 0.066 0.1690              
+    ## 7  22qDel Posterior_Multimodal 0.0100 0.930 0.9520              
+    ## 8  22qDel              Visual1 1.7900 0.180 0.3290              
+    ## 9  22qDel              Visual2 1.3900 0.240 0.3910              
+    ## 10     TD       Frontoparietal 1.0300 0.310 0.4320              
+    ## 11     TD          Somatomotor 0.0000 0.950 0.9520              
+    ## 12     TD    Cingulo_Opercular 4.6000 0.033 0.0998        6-22.7
+    ## 13     TD             Auditory 2.5700 0.110 0.2200              
+    ## 14     TD              Default 0.4300 0.680 0.7630              
+    ## 15     TD     Dorsal_Attention 3.0400 0.083 0.1870              
+    ## 16     TD Posterior_Multimodal 0.2800 0.600 0.7160              
+    ## 17     TD              Visual1 1.1900 0.310 0.4320              
+    ## 18     TD              Visual2 0.6300 0.430 0.5520
+
+``` r
 out_age_pvals_derv$Network <- gsub("_"," ",out_age_pvals_derv$Network)
 # write output
 #write.csv(out_age_pvals_derv, file=file.path(project,"/figures/gamm_age_table/22q_tcc_gamm_age_results_gsr.csv"), row.names = FALSE, quote=FALSE)
 # to maintain rounding and trailing zeros, open blank excel workbook, import text file, and import CSV changing column types to text, then save as xlsx
 ```
 
-
 calculate group difference in age smooths
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+``` r
 # function to take derivative output that includes an age smooth output age range where CI doesn't include zero
 # adapted from https://github.com/pittnerdlab/22q11_longitudinal_cortical_sMRI/blob/main/01a_age_effects.Rmd
 get_sig_diff_ages <- function(gam, smooth){
@@ -788,14 +956,31 @@ colnames(sig_dif_ages_df) <- "sig_age_range"
 sig_dif_ages_df$Network <- gsub(".combat","",rownames(sig_dif_ages_df))
 sig_dif_ages_df <- sig_dif_ages_df[,c("Network","sig_age_range")]
 sig_dif_ages_df
+```
+
+    ##                                          Network    sig_age_range
+    ## Auditory.combat                         Auditory                 
+    ## Cingulo_Opercular.combat       Cingulo_Opercular                 
+    ## Default.combat                           Default          12.3-15
+    ## Dorsal_Attention.combat         Dorsal_Attention                 
+    ## Frontoparietal.combat             Frontoparietal    6-9.6|16.8-19
+    ## Posterior_Multimodal.combat Posterior_Multimodal                 
+    ## Somatomotor.combat                   Somatomotor 6-14.5|14.8-22.8
+    ## Visual1.combat                           Visual1                 
+    ## Visual2.combat                           Visual2
+
+``` r
 # write output
 #write.csv(sig_dif_ages_df, file=file.path(project,"/figures/gamm_age_table/difference_smooths.csv"), row.names = FALSE, quote=FALSE)
 # to maintain rounding and trailing zeros, open blank excel workbook, import text file, and import CSV changing column types to text, then save as xlsx
 ```
 
 ### Demographics
-final demo table (need to add handedness, medications, psych dx, IQ, SIPS, BOLD movement)
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+final demo table (need to add handedness, medications, psych dx, IQ,
+SIPS, BOLD movement)
+
+``` r
 #dir <- "/Users/charlie/Dropbox/PhD/bearden_lab/22q/analyses/striatum_thalamus_fc"
 
 # get subjects missing TESTDATE
@@ -1103,8 +1288,210 @@ demo_match_final <- CreateTableOne(data=df_demo_table_bl,vars=vars_use,strata="S
 
 # export tableone
 export_demo_table <- print(demo_match_final, quote=F, noSpaces=T, printToggle=T, showAllLevels=T)
-export_demo_table
+```
 
+    ##                                    Stratified by SUBJECT_IDENTITY
+    ##                                     level                            
+    ##   n                                                                  
+    ##   AGE (mean (SD))                                                    
+    ##   SEX (%)                           F                                
+    ##                                     M                                
+    ##   hand (%)                          A                                
+    ##                                     L                                
+    ##                                     R                                
+    ##                                     <NA>                             
+    ##   percent_BOLD_scrubbed (mean (SD))                                  
+    ##   IQ_full (mean (SD))                                                
+    ##   SIPS_total (mean (SD))                                             
+    ##   SIPS_p_sum (mean (SD))                                             
+    ##   SIPS_prodromal (%)                FALSE                            
+    ##                                     TRUE                             
+    ##                                     <NA>                             
+    ##   SCID_ADHD (%)                     FALSE                            
+    ##                                     TRUE                             
+    ##   SCID_Anxiety_Related (%)          FALSE                            
+    ##                                     TRUE                             
+    ##   SCID_Depression_Related (%)       FALSE                            
+    ##                                     TRUE                             
+    ##   SCID_Impulse_and_Conduct (%)      FALSE                            
+    ##                                     TRUE                             
+    ##   SCID_OCD_Related (%)              FALSE                            
+    ##                                     TRUE                             
+    ##   SCID_Schizophrenia_Related (%)    FALSE                            
+    ##                                     TRUE                             
+    ##   summPsych_ASD (%)                 FALSE                            
+    ##                                     TRUE                             
+    ##   psych_meds (%)                    antipsychotic                    
+    ##                                     antidepressant_or_mood_stabilizer
+    ##                                     stimulant                        
+    ##                                     other                            
+    ##                                     none                             
+    ##                                     <NA>                             
+    ##   visit_counts (mean (SD))                                           
+    ##   avg_interval (mean (SD))                                           
+    ##                                    Stratified by SUBJECT_IDENTITY
+    ##                                     CONTROL         PATIENT-DEL     p      test
+    ##   n                                 69              65                         
+    ##   AGE (mean (SD))                   13.44 (4.76)    14.39 (4.56)    0.242      
+    ##   SEX (%)                           34 (49.3)       41 (63.1)       0.151      
+    ##                                     35 (50.7)       24 (36.9)                  
+    ##   hand (%)                          16 (23.2)       13 (20.0)       0.561      
+    ##                                     2 (2.9)         4 (6.2)                    
+    ##                                     31 (44.9)       34 (52.3)                  
+    ##                                     20 (29.0)       14 (21.5)                  
+    ##   percent_BOLD_scrubbed (mean (SD)) 6.86 (9.93)     9.84 (13.12)    0.139      
+    ##   IQ_full (mean (SD))               112.15 (20.53)  79.00 (12.70)   <0.001     
+    ##   SIPS_total (mean (SD))            4.29 (6.68)     24.44 (17.61)   <0.001     
+    ##   SIPS_p_sum (mean (SD))            1.18 (2.16)     5.44 (5.61)     <0.001     
+    ##   SIPS_prodromal (%)                46 (66.7)       32 (49.2)       0.001      
+    ##                                     4 (5.8)         20 (30.8)                  
+    ##                                     19 (27.5)       13 (20.0)                  
+    ##   SCID_ADHD (%)                     64 (92.8)       35 (53.8)       <0.001     
+    ##                                     5 (7.2)         30 (46.2)                  
+    ##   SCID_Anxiety_Related (%)          63 (91.3)       29 (44.6)       <0.001     
+    ##                                     6 (8.7)         36 (55.4)                  
+    ##   SCID_Depression_Related (%)       65 (94.2)       56 (86.2)       0.200      
+    ##                                     4 (5.8)         9 (13.8)                   
+    ##   SCID_Impulse_and_Conduct (%)      68 (98.6)       61 (93.8)       0.327      
+    ##                                     1 (1.4)         4 (6.2)                    
+    ##   SCID_OCD_Related (%)              68 (98.6)       60 (92.3)       0.184      
+    ##                                     1 (1.4)         5 (7.7)                    
+    ##   SCID_Schizophrenia_Related (%)    69 (100.0)      60 (92.3)       0.058      
+    ##                                     0 (0.0)         5 (7.7)                    
+    ##   summPsych_ASD (%)                 69 (100.0)      29 (44.6)       <0.001     
+    ##                                     0 (0.0)         36 (55.4)                  
+    ##   psych_meds (%)                    0 (0.0)         5 (7.7)         0.004      
+    ##                                     2 (2.9)         9 (13.8)                   
+    ##                                     2 (2.9)         4 (6.2)                    
+    ##                                     1 (1.4)         4 (6.2)                    
+    ##                                     64 (92.8)       42 (64.6)                  
+    ##                                     0 (0.0)         1 (1.5)                    
+    ##   visit_counts (mean (SD))          1.57 (0.85)     1.72 (0.96)     0.314      
+    ##   avg_interval (mean (SD))          653.21 (425.56) 787.04 (549.92) 0.296
+
+``` r
+export_demo_table
+```
+
+    ##                                    Stratified by SUBJECT_IDENTITY
+    ##                                     level                              
+    ##   n                                 ""                                 
+    ##   AGE (mean (SD))                   ""                                 
+    ##   SEX (%)                           "F"                                
+    ##                                     "M"                                
+    ##   hand (%)                          "A"                                
+    ##                                     "L"                                
+    ##                                     "R"                                
+    ##                                     NA                                 
+    ##   percent_BOLD_scrubbed (mean (SD)) ""                                 
+    ##   IQ_full (mean (SD))               ""                                 
+    ##   SIPS_total (mean (SD))            ""                                 
+    ##   SIPS_p_sum (mean (SD))            ""                                 
+    ##   SIPS_prodromal (%)                "FALSE"                            
+    ##                                     "TRUE"                             
+    ##                                     NA                                 
+    ##   SCID_ADHD (%)                     "FALSE"                            
+    ##                                     "TRUE"                             
+    ##   SCID_Anxiety_Related (%)          "FALSE"                            
+    ##                                     "TRUE"                             
+    ##   SCID_Depression_Related (%)       "FALSE"                            
+    ##                                     "TRUE"                             
+    ##   SCID_Impulse_and_Conduct (%)      "FALSE"                            
+    ##                                     "TRUE"                             
+    ##   SCID_OCD_Related (%)              "FALSE"                            
+    ##                                     "TRUE"                             
+    ##   SCID_Schizophrenia_Related (%)    "FALSE"                            
+    ##                                     "TRUE"                             
+    ##   summPsych_ASD (%)                 "FALSE"                            
+    ##                                     "TRUE"                             
+    ##   psych_meds (%)                    "antipsychotic"                    
+    ##                                     "antidepressant_or_mood_stabilizer"
+    ##                                     "stimulant"                        
+    ##                                     "other"                            
+    ##                                     "none"                             
+    ##                                     NA                                 
+    ##   visit_counts (mean (SD))          ""                                 
+    ##   avg_interval (mean (SD))          ""                                 
+    ##                                    Stratified by SUBJECT_IDENTITY
+    ##                                     CONTROL           PATIENT-DEL      
+    ##   n                                 "69"              "65"             
+    ##   AGE (mean (SD))                   "13.44 (4.76)"    "14.39 (4.56)"   
+    ##   SEX (%)                           "34 (49.3)"       "41 (63.1)"      
+    ##                                     "35 (50.7)"       "24 (36.9)"      
+    ##   hand (%)                          "16 (23.2)"       "13 (20.0)"      
+    ##                                     "2 (2.9)"         "4 (6.2)"        
+    ##                                     "31 (44.9)"       "34 (52.3)"      
+    ##                                     "20 (29.0)"       "14 (21.5)"      
+    ##   percent_BOLD_scrubbed (mean (SD)) "6.86 (9.93)"     "9.84 (13.12)"   
+    ##   IQ_full (mean (SD))               "112.15 (20.53)"  "79.00 (12.70)"  
+    ##   SIPS_total (mean (SD))            "4.29 (6.68)"     "24.44 (17.61)"  
+    ##   SIPS_p_sum (mean (SD))            "1.18 (2.16)"     "5.44 (5.61)"    
+    ##   SIPS_prodromal (%)                "46 (66.7)"       "32 (49.2)"      
+    ##                                     "4 (5.8)"         "20 (30.8)"      
+    ##                                     "19 (27.5)"       "13 (20.0)"      
+    ##   SCID_ADHD (%)                     "64 (92.8)"       "35 (53.8)"      
+    ##                                     "5 (7.2)"         "30 (46.2)"      
+    ##   SCID_Anxiety_Related (%)          "63 (91.3)"       "29 (44.6)"      
+    ##                                     "6 (8.7)"         "36 (55.4)"      
+    ##   SCID_Depression_Related (%)       "65 (94.2)"       "56 (86.2)"      
+    ##                                     "4 (5.8)"         "9 (13.8)"       
+    ##   SCID_Impulse_and_Conduct (%)      "68 (98.6)"       "61 (93.8)"      
+    ##                                     "1 (1.4)"         "4 (6.2)"        
+    ##   SCID_OCD_Related (%)              "68 (98.6)"       "60 (92.3)"      
+    ##                                     "1 (1.4)"         "5 (7.7)"        
+    ##   SCID_Schizophrenia_Related (%)    "69 (100.0)"      "60 (92.3)"      
+    ##                                     "0 (0.0)"         "5 (7.7)"        
+    ##   summPsych_ASD (%)                 "69 (100.0)"      "29 (44.6)"      
+    ##                                     "0 (0.0)"         "36 (55.4)"      
+    ##   psych_meds (%)                    "0 (0.0)"         "5 (7.7)"        
+    ##                                     "2 (2.9)"         "9 (13.8)"       
+    ##                                     "2 (2.9)"         "4 (6.2)"        
+    ##                                     "1 (1.4)"         "4 (6.2)"        
+    ##                                     "64 (92.8)"       "42 (64.6)"      
+    ##                                     "0 (0.0)"         "1 (1.5)"        
+    ##   visit_counts (mean (SD))          "1.57 (0.85)"     "1.72 (0.96)"    
+    ##   avg_interval (mean (SD))          "653.21 (425.56)" "787.04 (549.92)"
+    ##                                    Stratified by SUBJECT_IDENTITY
+    ##                                     p        test
+    ##   n                                 ""       ""  
+    ##   AGE (mean (SD))                   "0.242"  ""  
+    ##   SEX (%)                           "0.151"  ""  
+    ##                                     ""       ""  
+    ##   hand (%)                          "0.561"  ""  
+    ##                                     ""       ""  
+    ##                                     ""       ""  
+    ##                                     ""       ""  
+    ##   percent_BOLD_scrubbed (mean (SD)) "0.139"  ""  
+    ##   IQ_full (mean (SD))               "<0.001" ""  
+    ##   SIPS_total (mean (SD))            "<0.001" ""  
+    ##   SIPS_p_sum (mean (SD))            "<0.001" ""  
+    ##   SIPS_prodromal (%)                "0.001"  ""  
+    ##                                     ""       ""  
+    ##                                     ""       ""  
+    ##   SCID_ADHD (%)                     "<0.001" ""  
+    ##                                     ""       ""  
+    ##   SCID_Anxiety_Related (%)          "<0.001" ""  
+    ##                                     ""       ""  
+    ##   SCID_Depression_Related (%)       "0.200"  ""  
+    ##                                     ""       ""  
+    ##   SCID_Impulse_and_Conduct (%)      "0.327"  ""  
+    ##                                     ""       ""  
+    ##   SCID_OCD_Related (%)              "0.184"  ""  
+    ##                                     ""       ""  
+    ##   SCID_Schizophrenia_Related (%)    "0.058"  ""  
+    ##                                     ""       ""  
+    ##   summPsych_ASD (%)                 "<0.001" ""  
+    ##                                     ""       ""  
+    ##   psych_meds (%)                    "0.004"  ""  
+    ##                                     ""       ""  
+    ##                                     ""       ""  
+    ##                                     ""       ""  
+    ##                                     ""       ""  
+    ##                                     ""       ""  
+    ##   visit_counts (mean (SD))          "0.314"  ""  
+    ##   avg_interval (mean (SD))          "0.296"  ""
+
+``` r
 # fill in p-vals
 for (r in 2:nrow(export_demo_table)){
   if(export_demo_table[r,"p"]==""){
@@ -1161,12 +1548,31 @@ for(row in names(row_match)){
 export_demo_table_final <- as.data.frame(export_demo_table[c("n",as.vector(unlist(row_match))),c("CONTROL","PATIENT-DEL","p")])
 colnames(export_demo_table_final) <- c("Control","22qDel","p-value")
 export_demo_table_final
+```
+
+    ##                                        Control          22qDel p-value
+    ## n                                           69              65        
+    ## Age, mean (SD)                    13.44 (4.76)    14.39 (4.56)   0.242
+    ## Sex, n (%) Female                    34 (49.3)       41 (63.1)   0.151
+    ## Handedness, n (%) Right              31 (44.9)       34 (52.3)   0.561
+    ## fMRI % movement, mean (SD)         6.86 (9.93)    9.84 (13.12)   0.139
+    ## WASI Full Scale IQ, mean (SD)   112.15 (20.53)   79.00 (12.70)  <0.001
+    ## SIPS Positive total, mean (SD)     1.18 (2.16)     5.44 (5.61)  <0.001
+    ## Psychosis Risk Syndrome, n (%)         4 (5.8)       20 (30.8)   0.001
+    ## Psychosis Diagnosis, n (%)             0 (0.0)         5 (7.7)   0.058
+    ## ADHD, n (%)                            5 (7.2)       30 (46.2)  <0.001
+    ## Autism, n (%)                          0 (0.0)       36 (55.4)  <0.001
+    ## Antipsychotic med, n (%)               0 (0.0)         5 (7.7)   0.004
+    ## Visit count, mean (SD)             1.57 (0.85)     1.72 (0.96)   0.314
+    ## Days between visits, mean (SD) 653.21 (425.56) 787.04 (549.92)   0.296
+
+``` r
 #write.csv(export_demo_table_final, file=file.path(project,"figures/demographics/table1_demographics.csv"))
 ```
 
-
 missing data
-```{r}
+
+``` r
 ## get sessions missing data
 #missing_hand <- filter(df_demo_table_bl, is.na(hand))[,c("SUBJECTID","CONVERTEDVISITNUM")]
 #missing_hand$missing_handedness <- 1
@@ -1203,7 +1609,3 @@ missing data
 ##q_0263="R"
 ##q_0331="R"
 ```
-
-
-
-
