@@ -3,7 +3,7 @@
 Charles Schleifer
 6/23/2022
 
-## Overview
+### Overview
 
 This script uses Generalized Additive Mixed Models (GAMMs) to model
 non-parametric age trajectories for thalamocortical functional network
@@ -73,8 +73,10 @@ rgl::setupKnitr()
 rgl::rgl.open(); rgl::rgl.close()
 ```
 
-\###load CAB-NP atlas RSN atlas of whole cortex and subcortex to use for
-thalamus striatum connectivity analysis. Atlas can be downloaded here:
+### Load CAB-NP atlas
+
+RSN atlas of whole cortex and subcortex to use for thalamus striatum
+connectivity analysis. Atlas can be downloaded here:
 <https://github.com/ColeLab/ColeAnticevicNetPartition> load key for Ji
 parcels/networks
 
@@ -109,7 +111,7 @@ xii_Ji_network <- read_cifti(file.path(project,"CAB-NP/CortexSubcortex_ColeAntic
 
 ### Load individual TC connectivity CSVs
 
-computed by 22q_multisite_networkTC_save_individual.R and saved as a CSV
+Computed by 22q_multisite_networkTC_save_individual.R and saved as a CSV
 with one value per network representing the z-transformed pearson
 correlation between signals in the thalamic and cortical subsets of that
 network
@@ -162,16 +164,11 @@ setDT(all_tc)
 all_tc_wide <- reshape2::dcast(all_tc, MRI_S_ID + site ~ NETWORK, value.var="TC_Fz") 
 ```
 
-### load sistat data and get lists of scans to use
+### Load sistat data and get lists of scans to use
 
-all sistat tables should be exported as CSVs into a single directory the
+All sistat tables should be exported as CSVs into a single directory the
 next several chunks deal with reading, cleaning and annotating the data
-exported from sistat, and then age matching the hcs sample is younger
-than del due to a large amount of very young hcs subjects. plan is to
-match samples by using followup timepoints rather than baseline for some
-younger participants, and dropping several older del subjects, and
-younger hcs subjects (prioritizing dropping subjects with worse motion
-stats when possible)
+exported from sistat, and then age matching
 
 ``` r
 # set location of directory with ucla sistat CSVs
@@ -199,7 +196,7 @@ ucla_demo$SUBJECT_IDENTITY <- ucla_demo$SUBJECT_IDENTITY %>% sub("FAMILY MEMBER"
 ucla_demo$SEX <- factor(ucla_demo$SEX,levels=c(0,1),labels=c("F","M"))
 ```
 
-Temporary: read temporary csv with several subjects not yet in sistat
+temporary: read temporary csv with several subjects not yet in sistat
 
 ``` r
 # TODO: this chunk is temporary until sistat is updated 
@@ -348,7 +345,7 @@ waterfall
 #ggsave(plot=waterfall, filename=file.path(project,"figures/demographics/waterfall_age.pdf"), width=6, height=6, device = "pdf")
 ```
 
-get motion data for all sessions by reading movement scrubbing files on
+Get motion data for all sessions by reading movement scrubbing files on
 hoffman
 
 ``` r
@@ -394,7 +391,7 @@ percent_udvarsme_prisma$percent_use <- as.numeric(percent_udvarsme_prisma$percen
 percent_udvarsme_all <- rbind(percent_udvarsme_trio,percent_udvarsme_prisma)
 ```
 
-merge TC with demo_mri
+Merge TC with demo_mri
 
 ``` r
 demo_mri_tc <- merge(x=ucla_demo_hcs_del, y=all_tc_wide, by="MRI_S_ID")
@@ -412,7 +409,7 @@ tc_names <- names(all_tc_wide)[which(!(names(all_tc_wide) %in% c("MRI_S_ID", "si
 
 ### Harmonize sites
 
-longCombat for TC
+longCombat for thalamocortical connectivity
 
 ``` r
 # set up longCombat variables
@@ -512,7 +509,7 @@ all_age_pvals$age_p_val_fdr <- all_age_pvals$age_p_val %>% p.adjust(., method="f
 all_age_pvals
 ```
 
-make pretty table for export
+Make table for export
 
 ``` r
 out_age_pvals <- all_age_pvals[,c("SUBJECT_IDENTITY","Network","F","age_p_val","age_p_val_fdr")]
@@ -550,7 +547,7 @@ out_age_pvals
 # for export, skip to derivative section to merge with significant age ranges
 ```
 
-plot all TC smooths
+Plot all TC smooths
 
 ``` r
 # function to plot gamm and scatter
@@ -575,7 +572,7 @@ plot all TC smooths
 #lapply(tc_names_combat,function(x) plot_gamm_points_tc_combat(x,xlab="Age",ylab="TCC"))
 ```
 
-plot two favorites
+Plot two favorites
 
 ``` r
 #plot_gamm_points_tc_combat_ylab <- function(name){
@@ -617,7 +614,7 @@ plot two favorites
 #ggsave("~/Dropbox/PhD/bearden_lab/22q/analyses/longitudinal_gamm/tc_plots_som_fpn_dmn.png", device="png",width=13 ,height=4, units="in", dpi = 100, plot=pf)
 ```
 
-plot with individual subject longitudinal lines
+Plot with individual subject longitudinal lines
 
 ``` r
 #plot_gamm_pointslines_tc_combat <- function(name,xlab="", ylab="",ylim=c(-1,1.1),xlim=c(5.9,22)){
@@ -644,7 +641,7 @@ plot with individual subject longitudinal lines
 #lapply(tc_names_combat,function(x) plot_gamm_points_tc_combat(x,xlab="Age",ylab="TCC"))
 ```
 
-plot all TC smooths with partial residuals
+Plot all TC smooths with partial residuals
 
 ``` r
 plot_gamm_resid_tc <- function(name,xlab="", ylab="",ylim=c(-1,1),xlim=c(5.9,23)){
@@ -720,7 +717,7 @@ lapply(tc_names_combat,function(x) plot_gamm_resid_tc(name=x,xlab="Age",ylab="TC
 
 ![](22q_longitudinal_gamm_final_files/figure-gfm/unnamed-chunk-20-9.png)<!-- -->
 
-test derivative of curves
+Test derivative of curves
 
 ``` r
 # get list of derivative objects
@@ -866,7 +863,7 @@ gam_derv_legend <- ggarrange(gam_legend, derv_legend, ncol=1)
 #ggsave(plot=gam_derv_legend, filename=file.path(project,"figures/all_age_curves/all_tcc_legend_gsr.png"), units="in", device="png", dpi=300, bg = "white")
 ```
 
-add derivitave significant ranges to age stats table
+Add derivitave significant ranges to age stats table
 
 ``` r
 # get significant age ranges
@@ -913,7 +910,7 @@ out_age_pvals_derv$Network <- gsub("_"," ",out_age_pvals_derv$Network)
 # to maintain rounding and trailing zeros, open blank excel workbook, import text file, and import CSV changing column types to text, then save as xlsx
 ```
 
-calculate group difference in age smooths
+Calculate group difference in age smooths
 
 ``` r
 # function to take derivative output that includes an age smooth output age range where CI doesn't include zero
@@ -977,7 +974,7 @@ sig_dif_ages_df
 
 ### Demographics
 
-final demo table (need to add handedness, medications, psych dx, IQ,
+Final demo table (need to add handedness, medications, psych dx, IQ,
 SIPS, BOLD movement)
 
 ``` r
@@ -1570,7 +1567,7 @@ export_demo_table_final
 #write.csv(export_demo_table_final, file=file.path(project,"figures/demographics/table1_demographics.csv"))
 ```
 
-missing data
+Missing data
 
 ``` r
 ## get sessions missing data
