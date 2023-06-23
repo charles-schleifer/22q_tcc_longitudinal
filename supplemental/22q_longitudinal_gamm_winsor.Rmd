@@ -50,7 +50,7 @@ conflict_prefer("filter", "dplyr")
 # get path to project repo directory
 project <- here()
 # for supplemental scripts, keep project dir as main repo
-project <- dirname(project)
+#project <- dirname(project)
 print(paste("Project directory:", project))
 
 # set up connectome workbench path for ciftiTools
@@ -512,7 +512,7 @@ sig_ages_hcs <- lapply(gamm_tc_all_combat, function(g) get_sig_derv_ages(gam=g, 
 ```
 
 add derivitave significant ranges to age stats table
-```{r}
+```{r paged.print=FALSE}
 # get significant age ranges
 sig_ages_del_df <- do.call(rbind,sig_ages_del) %>% as.data.frame
 colnames(sig_ages_del_df) <- "sig_age_range"
@@ -536,5 +536,53 @@ write.csv(out_age_pvals_derv, file=file.path(project,"/figures/sensitivity_analy
 ```
 
 
+calculate group difference in age smooths
+```{r}
+# function to take derivative output that includes an age smooth output age range where CI doesn't include zero
+# adapted from https://github.com/pittnerdlab/22q11_longitudinal_cortical_sMRI/blob/main/01a_age_effects.Rmd
+get_sig_diff_ages <- function(gam, smooth){
+  # get derivative of specified smooth from gam
+  diff <- difference_smooths(model=gam, smooth=smooth)
+  
+  # get points where confidence interval doesn't include zero
+  sig <- sign(diff$lower) == sign(diff$upper)
+  
+  # get list of ages  
+  agelist <- diff$AGE[sig]
+  
+  ## create age range from list of ages
+  # set age gap (years) between significant ages to be considered new range
+  sigjump_brain<-0.23
+  j=1
+  ranges=""
+  if(length(agelist)>0) {
+    ranges<-round(agelist[[j]],digits=1)
+  }
+  while (j < length(agelist)) {
+    j<-j+1
+    diff<-agelist[[j]]-agelist[[j-1]]
+    if (diff > sigjump_brain) {
+      ranges<-paste0(ranges,"-",round(agelist[[j-1]],digits=1),"|",round(agelist[[j]],digits=1))
+    }
+    if(j==length(agelist)){
+      ranges<-paste0(ranges,"-",round(agelist[[j]],digits=1))
+    }
+  }
+  return(ranges)
+}
+
+#get_sig_derv_ages(gam=gamm_tc_all_combat[["Frontoparietal.combat"]], smooth="s(AGE):SUBJECT_IDENTITYPATIENT-DEL")
+sig_dif_ages <- lapply(gamm_tc_all_combat, function(g) get_sig_diff_ages(gam=g, smooth="s(AGE)"))
+
+# make table for export
+# get significant age ranges
+sig_dif_ages_df <- do.call(rbind,sig_dif_ages) %>% as.data.frame
+colnames(sig_dif_ages_df) <- "sig_age_range"
+sig_dif_ages_df$Network <- gsub(".combat","",rownames(sig_dif_ages_df))
+sig_dif_ages_df <- sig_dif_ages_df[,c("Network","sig_age_range")]
+# write output
+#write.csv(sig_dif_ages_df, file=file.path(project,"/supplemental/gamm_age_table/difference_smooths.csv"), row.names = FALSE, quote=FALSE)
+# to maintain rounding and trailing zeros, open blank excel workbook, import text file, and import CSV changing column types to text, then save as xlsx
+```
 
 
