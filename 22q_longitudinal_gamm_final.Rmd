@@ -202,7 +202,7 @@ ucla_demo$HISPANIC <- factor(ucla_demo$HISPANIC,levels=c(0,1,"Unknown"),labels=c
 # get more accurate age with AGEMONTH/12
 ucla_demo$AGE <- as.numeric(ucla_demo$AGEMONTH)/12 
 
-# subset to under max age limit (22 years old)
+# subset to under max age limit (23 years old)
 ucla_demo_agelim <- filter(ucla_demo, ucla_demo$AGE <= 23)
 
 # subset to hcs del
@@ -701,13 +701,13 @@ gam_derv_plot <- function(name){
   out <- ggarrange(plot_gamm, plot_derv_del, plot_derv_hcs, nrow=3,legend="none", common.legend=T,align="v", heights=c(5,1,1))
 }
 
-
 gam_derv_arrange <- ggarrange(gam_derv_plot("Frontoparietal.combat"),gam_derv_plot("Somatomotor.combat"),gam_derv_plot("Cingulo_Opercular.combat"),gam_derv_plot("Auditory.combat"),gam_derv_plot("Default.combat"),gam_derv_plot("Dorsal_Attention.combat"),gam_derv_plot("Posterior_Multimodal.combat"),gam_derv_plot("Visual1.combat"),gam_derv_plot("Visual2.combat"), nrow=3, ncol=3)
+gam_derv_arrange
 
 gam_legend <- get_legend(plot_gamm_resid_tc(name="Frontoparietal.combat", ylab="TCC"))
 derv_legend <- get_legend(plot_age_dervs(dervs_del[["Frontoparietal.combat"]], ylab="22qDel",ageranges=sig_ages_del[["Frontoparietal.combat"]], maxderv=maxderv_all))
 gam_derv_legend <- ggarrange(gam_legend, derv_legend, ncol=1)
-
+gam_derv_legend
 #ggsave(plot=gam_derv_arrange, filename=file.path(project,"figures/all_age_curves/all_tcc_gsr.svg"), width=16, height=16, units="in", device="svg")
 #ggsave(plot=gam_derv_arrange, filename=file.path(project,"figures/all_age_curves/all_tcc_gsr.pdf"), width=16, height=16, units="in", device="pdf")
 #ggsave(plot=gam_derv_arrange, filename=file.path(project,"figures/all_age_curves/all_tcc_gsr.png"), width=16, height=16, units="in", device="png", dpi=300, bg = "white")
