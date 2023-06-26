@@ -2,7 +2,15 @@
 Analysis of age-related trajectories for thalamocortical functional network connectivity in 22qDel and typical controls. 
 
 ## Overview
-[2q_longitudinal_gamm_final.md](https://github.com/charles-schleifer/22q_tcc_longitudinal/blob/main/22q_longitudinal_gamm_final.md): R markdown knitted output with code and plots 
+*[2q_longitudinal_gamm_final.md](https://github.com/charles-schleifer/22q_tcc_longitudinal/blob/main/22q_longitudinal_gamm_final.md): R markdown knitted output with code and plots for main analysis. 
+* analysis steps include:
+  * preprocessing and thalamocortical functional connectivity calculation (see: https://github.com/charles-schleifer/22q_hoffman)
+  * data harmonization (longComBat)
+  * generalized additive mixed models (GAMMs)
+  * plotting connectivity vs age curves
+  * rate of change
+  * group differences between curves
+  * demographics table 
 
 ## Dependencies
 * requires wb_command for ciftiTools functions that read/plot MRI data. 
