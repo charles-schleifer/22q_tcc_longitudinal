@@ -1,0 +1,13 @@
+id,name
+1,L_prefrontal
+11,R_prefrontal
+2,L_parietal
+12,R_parietal
+3,L_temporal
+13,R_temporal
+4,L_motor
+14,R_motor
+5,L_somatosensory
+15,R_somatosensory
+6,L_visual
+16,R_visual
