@@ -217,7 +217,8 @@ xii_new_atlas$data$subcort <- xii_thal_new$data$subcort
 
 ## plot
 # make dlabel with color key
-view_xifti_volume(xii_new_atlas, crop=FALSE,colors="turbo", slices=seq(34, 44, by=2),color_mode="qualitative")
-view_xifti_surface(xii_new_atlas, colors="turbo", color_mode = "qualitative")
+view_xifti_volume(xii_new_atlas, fname="~/Dropbox/github/22q_tcc_longitudinal/figures/anatomical/thal_anatomical_axial_34_42.pdf", bg="white",crop=FALSE,colors="turbo", slices=c(34,42),color_mode="qualitative")
+
+view_xifti_surface(xii_new_atlas,fname="~/Dropbox/github/22q_tcc_longitudinal/figures/anatomical/surface_anatomical.pdf", colors="turbo", color_mode = "qualitative")
 
   

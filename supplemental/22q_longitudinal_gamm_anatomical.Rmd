@@ -710,13 +710,12 @@ gam_legend <- get_legend(plot_gamm_resid_tc(name="motor.combat", ylab="TCC"))
 derv_legend <- get_legend(plot_age_dervs(dervs_del[["motor.combat"]], ylab="22qDel",ageranges=sig_ages_del[["motor.combat"]], maxderv=maxderv_all))
 gam_derv_legend <- ggarrange(gam_legend, derv_legend, ncol=1)
 gam_derv_legend
-#ggsave(plot=gam_derv_arrange, filename=file.path(project,"figures/all_age_curves/all_tcc_gsr.svg"), width=16, height=16, units="in", device="svg")
-#ggsave(plot=gam_derv_arrange, filename=file.path(project,"figures/all_age_curves/all_tcc_gsr.pdf"), width=16, height=16, units="in", device="pdf")
-#ggsave(plot=gam_derv_arrange, filename=file.path(project,"figures/all_age_curves/all_tcc_gsr.png"), width=16, height=16, units="in", device="png", dpi=300, bg = "white")
 
-#ggsave(plot=gam_derv_legend, filename=file.path(project,"figures/all_age_curves/all_tcc_legend_gsr.svg"), units="in", device="svg")
-#ggsave(plot=gam_derv_legend, filename=file.path(project,"figures/all_age_curves/all_tcc_legend_gsr.pdf"), units="in", device="pdf")
-#ggsave(plot=gam_derv_legend, filename=file.path(project,"figures/all_age_curves/all_tcc_legend_gsr.png"), units="in", device="png", dpi=300, bg = "white")
+ggsave(plot=gam_derv_arrange, filename=file.path(project,"figures/anatomical/anatomical_tcc_gsr.pdf"), width=16, height=11.5, units="in", device="pdf")
+#ggsave(plot=gam_derv_arrange, filename=file.path(project,"figures/anatomical/anatomical_tcc_gsr.png"), width=16, height=12, units="in", device="png", dpi=300, bg = "white")
+
+ggsave(plot=gam_derv_legend, filename=file.path(project,"figures/anatomical/anatomical_tcc_gsr_legend.pdf"), units="in", device="pdf")
+#ggsave(plot=gam_derv_legend, filename=file.path(project,"figures/anatomical/anatomical_tcc_gsr_legend.png"), units="in", device="png", dpi=300, bg = "white")
 ```
 
 Add derivitave significant ranges to age stats table
@@ -787,7 +786,7 @@ gamm_table_final <- merge(x=out_age_pvals_derv, y=sig_dif_ages_df, by="Network",
 gamm_table_final <- arrange(gamm_table_final, Group, factor(Network,levels=c("motor","somatosensory","parietal","prefrontal","temporal","visual")))
 
 # write output
-#write.csv(sig_dif_ages_df, file=file.path(project,"/figures/gamm_age_table/difference_smooths.csv"), row.names = FALSE, quote=FALSE)
+write.csv(gamm_table_final, file=file.path(project,"/figures/anatomical/anatomical_gamm.csv"), row.names = FALSE, quote=FALSE)
 # to maintain rounding and trailing zeros, open blank excel workbook, import text file, and import CSV changing column types to text, then save as xlsx
 ```
 
