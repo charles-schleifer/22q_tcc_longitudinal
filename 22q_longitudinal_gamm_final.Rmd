@@ -808,7 +808,7 @@ ucla_demo_hcs_del[which(ucla_demo_hcs_del$MRI_S_ID=="Q_0561_11032022"),"TESTDATE
 ucla_demo_hcs_del[which(ucla_demo_hcs_del$MRI_S_ID=="Q_0568_10252022"),"TESTDATE"] <- "10/25/2022"
 
 # get variables from demo_mri
-df_demo_table_bl <- filter(demo_mri_tc_hcs_del_combat, visit_index == 1)[,c("SUBJECTID", "CONVERTEDVISITNUM", "MRI_S_ID", "SUBJECT_IDENTITY", "AGE", "SEX", "EDUDAD", "EDUMOM", "EDUYEARS")]
+df_demo_table_bl <- filter(demo_mri_tc_hcs_del_combat, visit_index == 1)[,c("SUBJECTID", "CONVERTEDVISITNUM", "MRI_S_ID", "SUBJECT_IDENTITY", "AGE", "SEX", "EDUDAD", "EDUMOM", "EDUYEARS","site")]
 
 ### hand
 # get handedness item scores coded in sistat as 1=L, 2=R, 3=either, 0=no experience
@@ -1090,7 +1090,7 @@ df_demo_table_bl$avg_interval <- lapply(df_demo_table_bl$SUBJECTID, function(s) 
 
 # vector of variables for demo table
 #vars_use <- c("AGE","SEX","EDUDAD","EDUMOM","EDUYEARS","hand", "percent_BOLD_scrubbed", "IQ_full","WASI_verbal","WASI_matrix", "SIPS_total","SIPS_prodromal", dx_use, "summPsych_ASD", "psych_meds")
-vars_use <- c("AGE","SEX","hand", "percent_BOLD_scrubbed", "IQ_full", "SIPS_total","SIPS_p_sum","SIPS_prodromal", dx_use, "summPsych_ASD", "psych_meds","visit_counts","avg_interval")
+vars_use <- c("AGE","SEX","hand", "percent_BOLD_scrubbed", "IQ_full", "SIPS_total","SIPS_p_sum","SIPS_prodromal", dx_use, "summPsych_ASD", "psych_meds","visit_counts","avg_interval","site")
 
 # make table
 demo_match_final <- CreateTableOne(data=df_demo_table_bl,vars=vars_use,strata="SUBJECT_IDENTITY",addOverall=F,includeNA=T)
@@ -1116,21 +1116,6 @@ for (r in 1:nrow(export_demo_table)){
 rownames(export_demo_table) <- paste(rownames(export_demo_table), export_demo_table[,"level"])
 rownames(export_demo_table) %<>% str_trim()
 
-# manually edit row names for final table
-#rownames(export_demo_table)[which(rownames(export_demo_table)=="AGE (mean (SD))")] <- "Age, mean (SD)"
-#rownames(export_demo_table)[which(rownames(export_demo_table)=="SEX (%) F")] <- "Sex, n (%) Female"
-#rownames(export_demo_table)[which(rownames(export_demo_table)=="hand (%) R")] <- "Handedness, n (%) Right"
-#rownames(export_demo_table)[which(rownames(export_demo_table)=="percent_BOLD_scrubbed (mean (SD))")] <- "fMRI % movement, mean (SD)"
-#rownames(export_demo_table)[which(rownames(export_demo_table)=="IQ_full (mean (SD))")] <- "WASI Full Scale IQ, mean (SD)"
-#rownames(export_demo_table)[which(rownames(export_demo_table)=="SIPS_p_sum (mean (SD))")] <- "SIPS Positive total, mean (SD)"
-#rownames(export_demo_table)[which(rownames(export_demo_table)=="SIPS_prodromal (%) TRUE")] <- "Psychosis Risk Syndrome, n (%)"
-#rownames(export_demo_table)[which(rownames(export_demo_table)=="SCID_Schizophrenia_Related (%) TRUE")] <- "Psychosis Diagnosis, n (%)"
-#rownames(export_demo_table)[which(rownames(export_demo_table)=="SCID_ADHD (%) TRUE")] <- "ADHD, n (%)"
-#rownames(export_demo_table)[which(rownames(export_demo_table)=="summPsych_ASD (%) TRUE")] <- "Autism, n (%)"
-#rownames(export_demo_table)[which(rownames(export_demo_table)=="psych_meds (%) antipsychotic")] <- "Antipsychotic med, n (%)"
-#rownames(export_demo_table)[which(rownames(export_demo_table)=="visit_counts (mean (SD))")] <- "Visit count, mean (SD)"
-#rownames(export_demo_table)[which(rownames(export_demo_table)=="avg_interval (mean (SD))")] <- "Days between visits, mean (SD)"
-
 # match old row names to new row names
 row_match <- list(
 "AGE (mean (SD))"="Age, mean (SD)",
@@ -1145,7 +1130,8 @@ row_match <- list(
 "summPsych_ASD (%) TRUE"="Autism, n (%)",
 "psych_meds (%) antipsychotic"="Antipsychotic med, n (%)",
 "visit_counts (mean (SD))"="Visit count, mean (SD)",
-"avg_interval (mean (SD))"="Days between visits, mean (SD)")
+"avg_interval (mean (SD))"="Days between visits, mean (SD)",
+"site (%) trio"="Siemens Trio scanner, n (%)")
 
 for(row in names(row_match)){
   rownames(export_demo_table)[which(rownames(export_demo_table)==row)]<-row_match[[row]]
@@ -1158,6 +1144,24 @@ export_demo_table_final
 #write.csv(export_demo_table_final, file=file.path(project,"figures/demographics/table1_demographics.csv"))
 ```
 
+
+```{r}
+
+
+```
+
+
+
+
+```{r}
+all_motion <- merge(demo_mri_tc_hcs_del_combat, percent_udvarsme_all, by.x="MRI_S_ID", by.y="sesh")
+demo_match_longitudinal <- CreateTableOne(data=all_motion,vars=c("site","percent_udvarsme", "visit_index"),strata="SUBJECT_IDENTITY",addOverall=F,includeNA=T)
+demo_match_longitudinal
+
+export_all_motion <- print(demo_match_longitudinal, quote=F, noSpaces=T, printToggle=T, showAllLevels=T)
+#write.csv(export_all_motion, file=file.path(project,"figures/demographics/scanner_motion_visit.csv"))
+
+```
 
 Missing data
 ```{r}
