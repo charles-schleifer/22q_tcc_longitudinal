@@ -1495,7 +1495,7 @@ iq_plot <- ggarrange(iq_del, iq_td, nrow=2, ncol=1)
 #iq_plot <- iq_del/iq_td + plot_layout(tag_level = 'new') +  plot_annotation(tag_levels = list(c('22qDel', 'Control')))
 iq_plot
 #iq_del
-ggsave(plot=iq_plot, filename=file.path(project,"figures/behavior/IQ_TCC.pdf"), width=8, height=7, device = "pdf")
+#ggsave(plot=iq_plot, filename=file.path(project,"figures/behavior/IQ_TCC.pdf"), width=8, height=7, device = "pdf")
 
 ```
 
@@ -1520,12 +1520,16 @@ print("SOM IQ TD")
 som_iq_td <- lmerTest::lmer("Somatomotor.combat ~ IQ_full + SEX + (1|SUBJECTID)", data=sx_td, REML=TRUE, na.action = "na.omit")
 som_iq_td_summary <- summary(som_iq_td)
 som_iq_td_summary
+
 # frontoparietal 
 print("FPN IQ TD")
 fpn_iq_td <- lmerTest::lmer("Frontoparietal.combat ~ IQ_full + SEX + (1|SUBJECTID)", data=sx_td, REML=TRUE, na.action = "na.omit")
 fpn_iq_td_summary <- summary(fpn_iq_td)
 fpn_iq_td_summary
 
+fpn_iq_td <- lmerTest::lmer("IQ_full ~ Frontoparietal.combat + SEX + (1|SUBJECTID)", data=sx_td, REML=TRUE, na.action = "na.omit")
+fpn_iq_td_summary <- summary(fpn_iq_td)
+fpn_iq_td_summary
 
 ```
 
@@ -1549,31 +1553,31 @@ SIPS_del_fpn <- ggplot(data=sx_del, aes(x=SIPS_p_sum, y=Frontoparietal.combat))+
   xlab("SIPS positive")+
   theme_classic()
 
-# TD
-SIPS_td_som <- ggplot(data=sx_td, aes(x=SIPS_p_sum, y=Somatomotor.combat))+
+# log sips p sum
+SIPS_log_som <- ggplot(data=sx_del, aes(x=log_sips_p_sum, y=Somatomotor.combat))+
   geom_point()+
   geom_smooth(method = "lm")+
   #ggtitle("Somatomotor")+
   ylab("TCC")+
-  xlab("SIPS positive")+
+  xlab("log(SIPS_positive + 1)")+
   theme_classic() 
-SIPS_td_fpn <- ggplot(data=sx_td, aes(x=SIPS_p_sum, y=Frontoparietal.combat))+
+SIPS_log_fpn <- ggplot(data=sx_del, aes(x=log_sips_p_sum, y=Frontoparietal.combat))+
   geom_point()+
   geom_smooth(method = "lm")+
   #ggtitle("Frontoparietal")+
   ylab("")+
-  xlab("SIPS positive")+
+  xlab("log(SIPS_positive + 1)")+
   theme_classic()
 
 #SIPS_del <- ggarrange(SIPS_del_som, SIPS_del_fpn,SIPS_del_cin, nrow=1, ncol = 3)
-#SIPS_td <- ggarrange(SIPS_td_som, SIPS_td_fpn,SIPS_td_cin, nrow=1, ncol = 3)
-SIPS_del <- SIPS_del_som+SIPS_del_fpn + plot_annotation(title="22qDel")
-SIPS_td <- SIPS_td_som+SIPS_td_fpn + plot_annotation(title="Control")
-SIPS_plot <- ggarrange(SIPS_del, SIPS_td, nrow=2, ncol=1)
-#SIPS_plot <- SIPS_del/SIPS_td + plot_layout(tag_level = 'new') +  plot_annotation(tag_levels = list(c('22qDel', 'Control')))
+#SIPS_log <- ggarrange(SIPS_log_som, SIPS_log_fpn,SIPS_log_cin, nrow=1, ncol = 3)
+SIPS_del <- SIPS_del_som+SIPS_del_fpn + plot_annotation(title="22qDel Positive Symptoms")
+SIPS_log <- SIPS_log_som+SIPS_log_fpn + plot_annotation(title="log Transformed Positive Symptoms")
+SIPS_plot <- ggarrange(SIPS_del, SIPS_log, nrow=2, ncol=1)
+#SIPS_plot <- SIPS_del/SIPS_log + plot_layout(tag_level = 'new') +  plot_annotation(tag_levels = list(c('22qDel', 'Control')))
 SIPS_plot
 #SIPS_del
-ggsave(plot=SIPS_plot, filename=file.path(project,"figures/behavior/SIPSp_TCC.pdf"), width=8, height=7, device = "pdf")
+#ggsave(plot=SIPS_plot, filename=file.path(project,"figures/behavior/SIPSp_TCC.pdf"), width=8, height=7, device = "pdf")
 
 ```
 
@@ -1590,15 +1594,15 @@ som_sips_p_del_summary <- summary(som_sips_p_del)
 som_sips_p_del_summary
 
 ## frontoparietal 
-print("FPN SIPS p total TD")
-fpn_sips_p_td <- lmerTest::lmer("Frontoparietal.combat ~ SIPS_p_sum + SEX + (1|SUBJECTID)", data=sx_td, REML=TRUE, na.action = "na.omit")
-fpn_sips_p_td_summary <- summary(fpn_sips_p_td)
-fpn_sips_p_td_summary
+print("FPN SIPS log(p) 22qDel")
+fpn_sips_logp_del <- lmerTest::lmer("Frontoparietal.combat ~ log_sips_p_sum + SEX + (1|SUBJECTID)", data=sx_td, REML=TRUE, na.action = "na.omit")
+fpn_sips_logp_del_summary <- summary(fpn_sips_logp_del)
+fpn_sips_logp_del_summary
 ## somatomotor 
-print("SOM SIPS p total TD")
-som_sips_p_td <- lmerTest::lmer("Somatomotor.combat ~ SIPS_p_sum + SEX + (1|SUBJECTID)", data=sx_td, REML=TRUE, na.action = "na.omit")
-som_sips_p_td_summary <- summary(som_sips_p_td)
-som_sips_p_td_summary
+print("SOM SIPS log(p) 22qDel")
+som_sips_logp_del <- lmerTest::lmer("Somatomotor.combat ~ log_sips_p_sum + SEX + (1|SUBJECTID)", data=sx_td, REML=TRUE, na.action = "na.omit")
+som_sips_logp_del_summary <- summary(som_sips_logp_del)
+som_sips_logp_del_summary
 
 ```
 

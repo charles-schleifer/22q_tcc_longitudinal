@@ -1145,13 +1145,6 @@ export_demo_table_final
 ```
 
 
-```{r}
-
-
-```
-
-
-
 
 ```{r}
 all_motion <- merge(demo_mri_tc_hcs_del_combat, percent_udvarsme_all, by.x="MRI_S_ID", by.y="sesh")
@@ -1202,6 +1195,56 @@ Missing data
 ##q_0331="R"
 ```
 
+```{r}
+# SOM group by site interaction 
+#som_group_site <- lmerTest::lmer("Somatomotor.combat ~ SUBJECT_IDENTITY * site + (1|SUBJECTID)", data=demo_mri_tc_hcs_del_combat, REML=TRUE, na.action = "na.omit")
+#summary(som_group_site)
 
+# SOM group by site by visit interaction 
+som_group_site_visit <- lmerTest::lmer("Somatomotor.combat ~ SUBJECT_IDENTITY * site * as.numeric(visit_index) + (1|SUBJECTID)", data=demo_mri_tc_hcs_del_combat, REML=TRUE, na.action = "na.omit")
+summary(som_group_site_visit)
+
+# FPN group by site interaction 
+#fpn_group_site <- lmerTest::lmer("Frontoparietal.combat ~ SUBJECT_IDENTITY * site + (1|SUBJECTID)", data=demo_mri_tc_hcs_del_combat, REML=TRUE, na.action = "na.omit")
+#summary(fpn_group_site)
+
+# FPN group by site by visit interaction 
+fpn_group_site_visit <- lmerTest::lmer("Frontoparietal.combat ~ SUBJECT_IDENTITY * site * as.numeric(visit_index) + (1|SUBJECTID)", data=demo_mri_tc_hcs_del_combat, REML=TRUE, na.action = "na.omit")
+summary(fpn_group_site_visit)
+```
+
+
+```{r}
+
+# function to do chi square and return p-value for SUBJECT_IDENTITY and site
+group_site_chisq <- function(df){
+    contingency_table <- table(df$SUBJECT_IDENTITY, df$site)
+    chi_square_result <- chisq.test(contingency_table)
+    p <- chi_square_result$p.value 
+    return(p)
+}
+
+visits <- demo_mri_tc_hcs_del_combat$visit_index %>% unique %>% sort
+
+group_site_chisq_visits <- lapply(visits, function(v) group_site_chisq(df=filter(demo_mri_tc_hcs_del_combat, visit_index==v)))
+group_site_chisq_visits
+
+# function to get percent trio
+percent_trio <- function(vector){
+  l <- length(vector)
+  ntrio <- sum(vector == "trio")
+  percent <- ntrio/l
+  return(percent)
+}
+
+del_percent_trio_visits <- lapply(visits, function(v) percent_trio(filter(demo_mri_tc_hcs_del_combat, SUBJECT_IDENTITY=="PATIENT-DEL" & visit_index==v)$site))
+del_percent_trio_visits
+
+
+td_percent_trio_visits <- lapply(visits, function(v) percent_trio(filter(demo_mri_tc_hcs_del_combat, SUBJECT_IDENTITY=="CONTROL" & visit_index==v)$site))
+td_percent_trio_visits
+
+
+```
 
 
