@@ -1248,6 +1248,6 @@ td_percent_trio_visits
 ```
 save workspace
 ```{r}
-save.image(file=file.path(project,"data.Rdata"),compress = "gzip")
+save.image(file=file.path(project,"demographics/data.Rdata"),compress = "gzip")
 ```
 
