@@ -1,5 +1,8 @@
-# 22q_longitudinal
+# 22q_tcc_longitudinal
 Analysis of age-related trajectories for thalamocortical functional network connectivity in 22qDel and typical controls. 
+
+Charles H. Schleifer, Kathleen P. O’Hora, Maria Jalbrzikowski, Elizabeth Bondy, Leila Kushan-Wells, Amy Lin, Lucina Q. Uddin, Carrie E. Bearden. (2023). Longitudinal development of thalamocortical functional connectivity in 22q11.2 deletion syndrome. Biological Psychiatry:CNNI 
+https://doi.org/10.1016/j.bpsc.2023.09.001 
 
 ## Overview
 * [22q_longitudinal_gamm_final.md](https://github.com/charles-schleifer/22q_tcc_longitudinal/blob/main/22q_longitudinal_gamm_final.md): R markdown knitted output with code and plots for main analysis. 
