@@ -21,6 +21,6 @@ https://doi.org/10.1016/j.bpsc.2023.09.001
   * script expects the workbench directory to be `/Applications/workbench/bin_macosx64` (either download to this location, or edit the path in the script)
 * to read fMRI results from the hoffman2 server, the script expects that the server `hoffman2.idre.ucla.edu:/u/project/cbearden/data` is mounted to your local machine at the path `~/Desktop/hoffman_mount` using an application such as SSHFS (mac download: https://osxfuse.github.io/)
   * requires first-level MRI results to be already computed on server (see https://github.com/charles-schleifer/22q_hoffman)
-
+* paths are all relative to the project directory, which should be detected automatically by the package 'here' if RStudio is opened via the included .Rproj file 
 
  
