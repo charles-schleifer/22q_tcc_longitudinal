@@ -1248,12 +1248,13 @@ td_percent_trio_visits
 ```
 save workspace
 ```{r}
-# save list of packages
-setwd(project)
-sink("package_versions.txt")
-sessionInfo()
-sink()
-
-save.image(file=file.path(project,"demographics/data.Rdata"),compress = "bzip2")
+# # save list of packages
+# setwd(project)
+# sink("package_versions.txt")
+# sessionInfo()
+# sink()
+# 
+# save.image(file=file.path(project,"demographics/data.Rdata"),compress = "bzip2")
+# load("~/Dropbox/github/22q_tcc_longitudinal/demographics/data.Rdata")
 ```
 
