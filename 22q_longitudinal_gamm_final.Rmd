@@ -274,8 +274,8 @@ waterfall <- ggplot(ucla_demo_waterfall, aes(x=(AGEMONTH/12), y=as.factor(age1),
   #theme(text=element_text(family="Arial"))+
   theme(axis.text.y=element_blank(), axis.ticks.x=element_blank(),axis.ticks.y=element_blank()) + 
   geom_line(aes(group=SUBJECTID,color=SUBJECT_IDENTITY),alpha=0.7) +
-  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
-  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red")) +
+  scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red"), labels=c("Control","22qDel")) +
+  scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red"), labels=c("Control","22qDel")) +
   ylab("Individual") +
   xlab("Age") +
   xlim(5,23)+
