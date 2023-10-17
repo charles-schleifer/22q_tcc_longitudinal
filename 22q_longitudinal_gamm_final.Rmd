@@ -276,6 +276,9 @@ waterfall <- ggplot(ucla_demo_waterfall, aes(x=(AGEMONTH/12), y=as.factor(age1),
   geom_line(aes(group=SUBJECTID,color=SUBJECT_IDENTITY),alpha=0.7) +
   scale_fill_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red"), labels=c("Control","22qDel")) +
   scale_color_manual(values = c("CONTROL" = "deepskyblue", "PATIENT-DEL" = "red"), labels=c("Control","22qDel")) +
+  guides(fill  = guide_legend(order = 1, override.aes = list(shape=21, size=2,alpha=0.9, fill=c("deepskyblue","red"))),
+         color = guide_legend(order=1),
+         shape = guide_legend(order = 2, override.aes = list(size=2)))+
   ylab("Individual") +
   xlab("Age") +
   xlim(5,23)+
@@ -1258,3 +1261,9 @@ save workspace
 # load("~/Dropbox/github/22q_tcc_longitudinal/demographics/data.Rdata")
 ```
 
+requested during proofing
+```{r}
+# get estimated degrees of freedom for f-values in table 2
+del_f <- lapply(gamm_tc_all_combat, function(g) round(summary(g)$s.table["s(AGE):SUBJECT_IDENTITYPATIENT-DEL","edf"], digits=2))
+td_f <- lapply(gamm_tc_all_combat, function(g) round(summary(g)$s.table["s(AGE):SUBJECT_IDENTITYCONTROL","edf"], digits=2))
+```
